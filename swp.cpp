@@ -30,14 +30,14 @@
 
 using namespace std;
 
-int client(bool debug, bool validate); // Client
-int server(bool debug, bool validate); // Server
+int client(bool debug, bool validate, int pMode); // Client
+int server(bool debug, bool validate, int pMode); // Server
 int md5(char * fileName); // MD5
 int fsize(FILE * fp); // File Size
 
 int main(int argc, char * argv[]) { // Main function, parses arguments to determine server/client
-    int responce = 0;
-    bool debug = false, isServer = false, isClient = false, validate = false;
+    int responce = 0, mode = 0;
+    bool debug = false, isServer = false, isClient = false, validate = false, GBN = false, SR = false;
     system("clear");
     for (int i = 0; i < argc; i++) {
         std::string arg(argv[i]);
@@ -49,35 +49,58 @@ int main(int argc, char * argv[]) { // Main function, parses arguments to determ
             debug = true;
         } else if (arg == "-v") {
             validate = true;
+        } else if (arg == "-gbn") {
+            GBN = true;
+			mode = 1;
+        } else if (arg == "-sr") {
+            SR = true;
+			mode = 2;
         }
     }
-
-    if (isServer) {
-        cout << FOREGRN << "[SERVER]";
-        if (debug) {
-            cout << "[DEBUG]";
-        }
-        if (validate) {
-            cout << "[VALIDATE]";
-        }
-        cout << "\n";
-        responce = server(debug, validate);
-    } else if (isClient) {
-        cout << FOREGRN << "[CLIENT]";
-        if (debug) {
-            cout << "[DEBUG]";
-        }
-        if (validate) {
-            cout << "[VALIDATE]";
-        }
-        cout << "\n";
-        responce = client(debug, validate);
-    } else {
-        cout << FORERED << "Invalid parameter(s) entered, please specify if you are running a server ('-s') or a client ('-c') and use ('-d') to run in debug mode\n" << RESETTEXT;
-    }
+	
+	if (mode == 0){
+		cout << FORERED << "Please specify protocol type ('-gbn') for Go-Back-N or ('-sr') for Selective Repeat\n" << RESETTEXT;
+		return 0;
+	} else {
+		if (isServer) {
+			cout << FOREGRN << "[SERVER]";
+			if (debug) {
+				cout << "[DEBUG]";
+			}
+			if (validate) {
+				cout << "[VALIDATE]";
+			}
+			if (GBN) {
+				cout << "[GBN]";
+			}
+			if (SR) {
+				cout << "[SR]";
+			}
+			cout << "\n";
+			responce = server(debug, validate, mode);
+		} else if (isClient) {
+			cout << FOREGRN << "[CLIENT]";
+			if (debug) {
+				cout << "[DEBUG]";
+			}
+			if (validate) {
+				cout << "[VALIDATE]";
+			}
+			if (GBN) {
+				cout << "[GBN]";
+			}
+			if (SR) {
+				cout << "[SR]";
+			}
+			cout << "\n";
+			responce = client(debug, validate, mode);
+		} else {
+			cout << FORERED << "Invalid parameter(s) entered, please specify if you are running a server ('-s') or a client ('-c') and use ('-d') to run in debug mode\n" << RESETTEXT;
+		}
+	}
     return 0;
 }
-int client(bool debug, bool validate) { // Client function, send file to server
+int client(bool debug, bool validate, int pMode) { // Client function, send file to server
     int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, totalSent = 0; // Declare integers
     char rbuff[1024], ip[32], fileName[64]; // Declare char arrays
     struct sockaddr_in serv_addr; // Declare socket
@@ -241,7 +264,7 @@ int client(bool debug, bool validate) { // Client function, send file to server
     close(sfd); // Close socket
     return 0;
 }
-int server(bool debug, bool validate) { // Server function, connects to a client, recieves and decrypts packets of file contents, and writes result to file
+int server(bool debug, bool validate, int pMode) { // Server function, connects to a client, recieves and decrypts packets of file contents, and writes result to file
     int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, totalRecieved = 0; // Declare integers
     struct sockaddr_in serv_addr; // Declare socket struct
     char fileName[64], initialBuff[32], ip[32]; // Declare char arrays

@@ -1,4 +1,4 @@
 	
-all: sendfile.cpp
-	gcc -o sendfile sendfile.cpp -lstdc++ -w 2>build
+all: swp.cpp
+	gcc -o swp swp.cpp -lstdc++ -w 2>build
 	clear
