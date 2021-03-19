@@ -1,6 +1,6 @@
-# CS462Project
-CS 462 – Sliding Window Protocols Team Project
+# CS 462 - Sliding Window Protocols Team Project
 
-### Status
+<img src="https://img.shields.io/badge/platform-windows-success.svg"> <img src="https://img.shields.io/badge/version-0.5-green">
 
-  Currently have modified sendfile.cpp (from cs452) with added launch paramaters for gbn/sp protocols.
+## Prototype Screenshots
+![](demo.PNG)
