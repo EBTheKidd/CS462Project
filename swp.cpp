@@ -20,8 +20,6 @@
 #define FOREYEL "\x1B[33m" // Yellow
 #define FORECYN "\x1B[36m" // Cyan
 #define FOREWHT "\x1B[37m" // White
-#define PBSTR "##################################################" // Progress bar filler
-#define PBWIDTH 35 // Progress bar width
 
 // PHONEIX SERVER IPs (ignore)
 // Phoneix0: 10.35.195.251
@@ -241,14 +239,6 @@ int client(bool debug) {
                     if (packetNum == 9 && debug == false) {
                         cout << "\nSending Remaining Packets...\n" << FORECYN;
                     }
-                } else if (!debug) {
-					// Progress bar
-                    double percentage = ((double) totalSent / (double) fileSize);
-                    int val = (int)(percentage * 100);
-                    int lpad = (int)(percentage * PBWIDTH);
-                    int rpad = PBWIDTH - lpad;
-                    printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
-                    fflush(stdout);
                 }
 				 // Send Packet
                 send(sfd, sendbuffer, b, 0);
@@ -273,10 +263,10 @@ int client(bool debug) {
     }
     fclose(fp); // Close file
     if (run) {
-        cout << FOREGRN << "\n\nSend Success!\n" << RESETTEXT; // Print 'Send Success!'
+        cout << FOREGRN << "\nSend Success!\n" << RESETTEXT; // Print 'Send Success!'
         md5(fileName); // Print md5
     } else {
-        cout << FORERED << "\n\nSend Failed!\n" << RESETTEXT;
+        cout << FORERED << "\nSend Failed!\n" << RESETTEXT;
     }
     close(sfd); // Close socket
     return 0;
@@ -407,15 +397,7 @@ int server(bool debug) {
                             if (packetNum == 9 && debug == false) {
                                 cout << "\nRecieving Remaining Packets...\n" << FORECYN;
                             }
-                        } else if (!debug) { 
-							// Progress bar
-                            double percentage = ((double) totalRecieved / (double) fileSize);
-                            int val = (int)(percentage * 100);
-                            int lpad = (int)(percentage * PBWIDTH);
-                            int rpad = PBWIDTH - lpad;
-                            printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
-                            fflush(stdout);
-                        }
+                        } 
 						// Write packet to file
                         fwrite(recieveBuffer, 1, b, fp); 
 						// Increase packet count
@@ -438,10 +420,10 @@ int server(bool debug) {
 
             fclose(fp); // Close file
             if (run) {
-                cout << FOREGRN << "\n\nRecieve Success!\n" << RESETTEXT; // Print 'Recieve Success!'
+                cout << FOREGRN << "\nRecieve Success!\n" << RESETTEXT; // Print 'Recieve Success!'
                 md5(fileName); // Print md5
             } else {
-                cout << FORERED << "\n\nRecieve Failed!\n" << RESETTEXT;
+                cout << FORERED << "\nRecieve Failed!\n" << RESETTEXT;
             }
             return 0;
         } else {
