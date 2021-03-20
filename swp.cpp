@@ -31,14 +31,15 @@
 
 using namespace std;
 
-int client(bool debug, int pMode); // Client
-int server(bool debug, int pMode); // Server
+int client(bool debug); // Client
+int server(bool debug); // Server
 int md5(char * fileName); // MD5
 int fsize(FILE * fp); // File Size
 
-int main(int argc, char * argv[]) { // Main function, parses arguments to determine server/client
+// Main function, parses arguments to determine server/client
+int main(int argc, char * argv[]) { 
     int responce = 0, mode = 0;
-    bool debug = false, isServer = false, isClient = false, GBN = false, SR = false;
+    bool debug = false, isServer = false, isClient = false;
     system("clear");
     for (int i = 0; i < argc; i++) {
         std::string arg(argv[i]);
@@ -48,81 +49,62 @@ int main(int argc, char * argv[]) { // Main function, parses arguments to determ
             isClient = true;
         } else if (arg == "-d") {
             debug = true;
-        } else if (arg == "-gbn") {
-            GBN = true;
-			mode = 1;
-        } else if (arg == "-sr") {
-            SR = true;
-			mode = 2;
         }
     }
 	
-	if (mode == 0){
-		cout << FORERED << "Please specify protocol type ('-gbn') for Go-Back-N or ('-sr') for Selective Repeat\n" << RESETTEXT;
-		return 0;
-	} else {
-		if (isServer) {
-			cout << FOREGRN << "[SERVER]";
-			if (debug) {
-				cout << "[DEBUG]";
-			}
-			if (GBN) {
-				cout << "[GBN]";
-			}
-			if (SR) {
-				cout << "[SR]";
-			}
-			cout << "\n";
-			responce = server(debug, mode);
-		} else if (isClient) {
-			cout << FOREGRN << "[CLIENT]";
-			if (debug) {
-				cout << "[DEBUG]";
-			}
-			if (GBN) {
-				cout << "[GBN]";
-			}
-			if (SR) {
-				cout << "[SR]";
-			}
-			cout << "\n";
-			responce = client(debug, mode);
-		} else {
-			cout << FORERED << "Invalid parameter(s) entered, please specify if you are running a server ('-s') or a client ('-c') and use ('-d') to run in debug mode\n" << RESETTEXT;
+	if (isServer) {
+		cout << FOREGRN << "[----------SERVER----------]";
+		if (debug) {
+			cout << "[DEBUG MODE]";
 		}
+		cout << "\n";
+		responce = server(debug);
+	} else if (isClient) {
+		cout << FOREGRN << "[----------CLIENT----------]";
+		if (debug) {
+			cout << "[DEBUG MODE]";
+		}
+		cout << "\n";
+		responce = client(debug);
+	} else {
+		cout << FORERED << "Invalid parameter(s) entered, please specify if you are running a server ('-s') or a client ('-c') and use ('-d') to run in debug mode\n" << RESETTEXT;
 	}
     return 0;
 }
-int client(bool debug, int pMode) { // Client function, send file to server
+
+// Client function, send file to server
+int client(bool debug) { 
 	// Declare necessary variables/structures
-    int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, totalSent = 0;
-    char ip[32], fileName[64];
+    int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, totalSent = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
+    char ip[32], fileName[64], dropPackets[1024], looseAcks[1024];
     struct sockaddr_in serv_addr;
+	
 	// Initialize socket
     sfd = socket(AF_INET, SOCK_STREAM, 0);
-	// Get input from user
+	
+	// Get server IP from user
     cout << FOREWHT << "IP Address: ";
     scanf("%15s", ip);
+	if (strlen(ip) == 0){
+		cout << FORERED << "Invalid IP Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get server Port from user
     cout << "Port: ";
     cin >> port;
+	if (port < 1){
+		cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get file name from user
     cout << "File Name: ";
     scanf("%64s", fileName);
-    cout << "Packet Size (kb): ";
-    cin >> packetSize;
-    packetSize = packetSize * 1000;
-    char sendbuffer[packetSize];
-	// Set family, port, and ip for socket
-    serv_addr.sin_family = AF_INET; 
-    serv_addr.sin_port = htons(port);
-    serv_addr.sin_addr.s_addr = inet_addr(ip);
-	// Connect to server
-    cout << FOREYEL << "Attempting to connect to " << ip << ":" << port << "\n" << RESETTEXT;
-    if ((connect(sfd, (struct sockaddr * ) & serv_addr, sizeof(serv_addr)) == -1)) {
-        cout << FORERED << "CONNECTION FAILED...\n" << RESETTEXT;
-        perror("Connect");
-        return 1;
-    }
-    cout << FOREGRN << "Connected to server!\n" << RESETTEXT;
+	if (strlen(fileName) == 0){
+		cout << FORERED << "Invalid File Name Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
 	// Open file for sending
     FILE * fp = fopen(fileName, "rb"); 
     if (fp == NULL) {
@@ -131,16 +113,117 @@ int client(bool debug, int pMode) { // Client function, send file to server
         return 2;
     }
     int fileSize = fsize(fp);
+	
+	// Get packet size from user
+    cout << "Packet Size (kb): ";
+    cin >> packetSize;
+	if (packetSize < 1){
+		cout << FORERED << "Invalid Packet Size Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+    packetSize = packetSize * 1000;
+    char sendbuffer[packetSize];
+	
+	// Get protocol from user
+    cout << "Protocol (1=GBN 2=SR): ";
+    cin >> pMode;
+	if (pMode < 1 || pMode > 2){
+		cout << FORERED << "Invalid Protocol Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get timeout from user
+    cout << "Timeout (ms): ";
+    cin >> timeout;
+	if (timeout < 1){
+		cout << FORERED << "Invalid Timeout Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get size of sliding window from user
+    cout << "Size Of Sliding Window: ";
+    cin >> sWindowSize;
+	if (sWindowSize < 1){
+		cout << FORERED << "Invalid Sliding Window Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get sequence range from user
+    cout << "Sequence Range Low: ";
+    cin >> sRangeLow;
+    cout << "Sequence Range High: ";
+    cin >> sRangeHigh;
+	if (sRangeHigh < sRangeLow || sRangeLow < 0){
+		cout << FORERED << "Invalid Range Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get situational errors from user
+    cout << "Situational Errors (1=none, 2=random, 3=custom): ";
+    cin >> sErrors;
+	if (sErrors == 3){
+			cout << "Please enter comma-separated packet numbers to drop, if none, enter nothing and press enter: ";
+			scanf("%1024s", dropPackets);
+			
+			cout << "Please enter comma-separated acks to loose, if none, enter nothing and press enter: ";
+			scanf("%1024s", looseAcks);
+			bool validatedErrors = (strlen(dropPackets) != 0) || (strlen(looseAcks) != 0);
+			if (!validatedErrors){
+				cout << FORERED << "Invalid Custom Errors Input Entered... please try again\n" << RESETTEXT;
+				return 0;
+			} else {
+				// Parse custom situational errors here
+			}
+	} else if (sErrors == 0 || sErrors > 3){
+		cout << FORERED << "Invalid Situationel Errors Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Set family, port, and ip for socket
+    serv_addr.sin_family = AF_INET; 
+    serv_addr.sin_port = htons(port);
+    serv_addr.sin_addr.s_addr = inet_addr(ip);
+	
+	// Connect to server
+    cout << FOREYEL << "\nAttempting to connect to " << ip << ":" << port << "\n" << RESETTEXT;
+    if ((connect(sfd, (struct sockaddr * ) & serv_addr, sizeof(serv_addr)) == -1)) {
+        cout << FORERED << "CONNECTION FAILED...\n" << RESETTEXT;
+        perror("Connect");
+        return 1;
+    }
+    cout << FOREGRN << "Connected to server!\n" << RESETTEXT;
+	
+	
+	// Send Settings to server
+	cout << FOREYEL << "Sending Settings to Server...\n" << RESETTEXT;
 	// Send packet size to server
     uint32_t tmp = htonl(packetSize); 
     write(sfd, & tmp, sizeof(tmp));
 	// Send file size to server
     uint32_t tmp2 = htonl(fileSize); 
     write(sfd, & tmp2, sizeof(tmp2));
+	// Send protcol mode to server
+    uint32_t tmp3 = htonl(pMode); 
+    write(sfd, & tmp3, sizeof(tmp3));
+	// Send timeout to server
+    uint32_t tmp4 = htonl(timeout); 
+    write(sfd, & tmp4, sizeof(tmp4));
+	// Send Size Of Sliding Window to server
+    uint32_t tmp5 = htonl(sWindowSize); 
+    write(sfd, & tmp5, sizeof(tmp5));
+	// Send Sequence Range Low to server
+    uint32_t tmp6 = htonl(sRangeLow); 
+    write(sfd, & tmp6, sizeof(tmp6));
+	// Send Sequence Range High to server
+    uint32_t tmp7 = htonl(sRangeHigh); 
+    write(sfd, & tmp7, sizeof(tmp7));
+	cout << FOREGRN << "Settings Sent!\n" << RESETTEXT;
+	
 	// Set client variables
     int mode = 1;
     bool run = true;
 	// Loop until total bytes sent is equal to file size bytes
+	cout << "\n[File Transfer]\n" << RESETTEXT;
     while ((totalSent != fileSize) && run) {
         switch (mode) {
         case 1:
@@ -198,31 +281,54 @@ int client(bool debug, int pMode) { // Client function, send file to server
     close(sfd); // Close socket
     return 0;
 }
-int server(bool debug, int pMode) { // Server function, connects to a client, recieves packets of file contents, and writes result to file
+
+// Server function, connects to a client, recieves packets of file contents, and writes result to file
+int server(bool debug) { 
 	// Declare necessary variables
-    int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, totalRecieved = 0;
+    int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, totalRecieved = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     struct sockaddr_in serv_addr;
     char fileName[64], initialBuff[32], ip[32];
-	// Get user input
+	
+	// Get IP from user
     cout << FOREWHT << "IP Address: "; 
     scanf("%15s", ip);
+	if (strlen(ip) == 0){
+		cout << FORERED << "Invalid IP Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get port from user
     cout << "Port: ";
     cin >> port;
+	if (port < 1){
+		cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
+	// Get output file from user
     cout << "Output File Name: ";
     scanf("%64s", fileName);
+	if (strlen(fileName) == 0){
+		cout << FORERED << "Invalid Output File Name Input Entered... please try again\n" << RESETTEXT;
+		return 0;
+	}
+	
 	// Initialize socket
     fd = socket(AF_INET, SOCK_STREAM, 0); 
+	
 	// Allocate memory for server address and initial buffer (used to get packet size)
     memset( & serv_addr, '0', sizeof(serv_addr));
     memset(initialBuff, '0', sizeof(initialBuff));
+	
 	 // Set family, port, and ip address for socket	
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = inet_addr(ip);
     serv_addr.sin_port = htons(port);
+	
 	 // Bind socket struct to socket and begin listening for clients
     bind(fd, (struct sockaddr * ) & serv_addr, sizeof(serv_addr));
     listen(fd, 10);
-    cout << FOREYEL << "Socket started on " << ip << ":" << port << "\n";
+    cout << FOREYEL << "\nSocket started on " << ip << ":" << port << "\n";
     cout << "Waiting for client connection...\n" << RESETTEXT;
     while (1) {
 		// Accept connection and error handle
@@ -231,7 +337,8 @@ int server(bool debug, int pMode) { // Server function, connects to a client, re
             perror("Accept");
             continue;
         }
-        cout << FOREGRN << "Connected to client!\n" << FOREWHT;
+        cout << FOREGRN << "Connected to client!\n";
+		
 		// Get Packet Size from client
         uint32_t tmp; 
         read(confd, & tmp, sizeof(tmp));
@@ -239,9 +346,44 @@ int server(bool debug, int pMode) { // Server function, connects to a client, re
 		// Declare new recieving buff[] to be length of packet size and allocate memory for new buffer
         char recieveBuffer[packetSize]; 
         memset(recieveBuffer, '0', sizeof(recieveBuffer));
-        uint32_t tmp2; // Get File Size
+		// Get File Size from client
+        uint32_t tmp2; 
         read(confd, & tmp2, sizeof(tmp2));
         int fileSize = ntohl(tmp2);
+		// Get Protocol from client
+        uint32_t tmp3; 
+        read(confd, & tmp3, sizeof(tmp3));
+        int pMode = ntohl(tmp3);
+		// Get timeout from client
+        uint32_t tmp4; 
+        read(confd, & tmp4, sizeof(tmp4));
+        int timeout = ntohl(tmp4);
+		// Get Size Of Sliding Window from client
+        uint32_t tmp5; 
+        read(confd, & tmp5, sizeof(tmp5));
+        int sWindowSize = ntohl(tmp5);
+		// Get Sequence Range Low from client
+        uint32_t tmp6; 
+        read(confd, & tmp6, sizeof(tmp6));
+        int sRangeLow = ntohl(tmp6);
+		// Get Sequence Range High from client
+        uint32_t tmp7; 
+        read(confd, & tmp7, sizeof(tmp7));
+        int sRangeHigh = ntohl(tmp7);
+		
+		
+		
+
+		// Print recieved information from client
+		cout << FOREYEL << "\n[Settings Recieved From Client]\n";
+		if (pMode == 1){
+			cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: GBN\n";
+		} else if (pMode == 2){
+			cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: SR\n";
+		}
+		cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
+		cout << "\n[File Transfer]\n";
+		
 		// Open new file for writing
         FILE * fp = fopen(fileName, "wb"); 
         if (fp != NULL) {
@@ -310,7 +452,9 @@ int server(bool debug, int pMode) { // Server function, connects to a client, re
     }
     return 0;
 }
-int md5(char * fileName) { // MD5 function, uses system call to output md5sum of file
+
+// MD5 function, uses system call to output md5sum of file
+int md5(char * fileName) { 
     string str(fileName);
     cout << FORECYN << "\nMD5 result for '" << str << "'\n";
     string command = "md5sum " + str;
@@ -318,7 +462,9 @@ int md5(char * fileName) { // MD5 function, uses system call to output md5sum of
     cout << "\n" << RESETTEXT;
     return 0;
 }
-int fsize(FILE * fp) { // fsize function, returns input value's file size 
+
+// fsize function, returns input value's file size 
+int fsize(FILE * fp) {
     int prev = ftell(fp);
     fseek(fp, 0L, SEEK_END);
     int sz = ftell(fp);
