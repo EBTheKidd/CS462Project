@@ -8,3 +8,5 @@
 ## TODO
 1. Implement Go-Back-N & Selective Repeat protocol simulations
 2. Implement Internet Checksum or the CRC checksum algorithm
+3. Format user input to get required information
+4. Ensure other project requirements are being achieved
