@@ -41,24 +41,22 @@
 
 using namespace std;
 
-// Old Function declarations
+// Server/Client Functions
 int client(bool debug); // Client
 int server(bool debug); // Server
+
+// File info functions
 int md5(char * fileName); // MD5
 int fsize(FILE * fp); // File Size
 
-// New function declarations
+// Packet Header functions
 void ProcessPacket(unsigned char* , int);
-void print_ip_header(unsigned char* , int);
 void print_tcp_packet(unsigned char* , int);
-void print_udp_packet(unsigned char * , int);
-void print_icmp_packet(unsigned char* , int);
 void PrintData (unsigned char* , int);
 
-// New Variables declrations
-int sock_raw;
+// Packet Header variable
 FILE *logfile;
-int tcp=0,udp=0,icmp=0,others=0,igmp=0,total=0,i,j;
+int total=0,i,j;
 struct sockaddr_in source,dest;
 
 
@@ -100,6 +98,7 @@ int main(int argc, char * argv[]) {
 
 // Client function, send file to server
 int client(bool debug) { 
+	logfile=fopen("ClientLog.txt","w");
 	// Declare necessary variables/structures
     int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, totalSent = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     char ip[32], fileName[64], dropPackets[1024], looseAcks[1024];
@@ -264,11 +263,16 @@ int client(bool debug) {
                     } else {
                         cout << "\n";
                     }
+					
+					unsigned char* processBuffer = reinterpret_cast<unsigned char *>( sendbuffer );
+					// Process Packet
+					ProcessPacket(processBuffer , b);
+					
                     if (packetNum == 9 && debug == false) {
                         cout << "\nSending Remaining Packets...\n" << FORECYN;
                     }
                 }
-				 // Send Packet
+				// Send Packet
                 send(sfd, sendbuffer, b, 0);
 				// Increase packet counter
                 packetNum++;
@@ -302,7 +306,7 @@ int client(bool debug) {
 
 // Server function, connects to a client, recieves packets of file contents, and writes result to file
 int server(bool debug) { 
-	logfile=fopen("log.txt","w");
+	logfile=fopen("ServerLog.txt","w");
 	// Declare necessary variables
     int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, totalRecieved = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     struct sockaddr_in serv_addr;
@@ -499,7 +503,6 @@ void ProcessPacket(unsigned char* buffer, int size) {
 	} catch (int error){
 		cout << "\nError Getting TCP Headder: " << error;
 	}
-	// printf("TCP : %d   UDP : %d   ICMP : %d   IGMP : %d   Others : %d   Total : %d\r",tcp,udp,icmp,igmp,others,total);
 }
 
 // Print IP Header information. Writes header to file as well as outputs necessary info to console
