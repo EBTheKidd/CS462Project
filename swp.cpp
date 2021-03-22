@@ -1,3 +1,4 @@
+// Old Includes
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/types.h>
@@ -12,6 +13,17 @@
 #include <netdb.h>
 #include <errno.h>
 #include <sstream>
+
+// New Includes
+#include<stdio.h>	//For standard things
+#include<stdlib.h>	//malloc
+#include<string.h>	//memset
+#include<netinet/ip_icmp.h>	//Provides declarations for icmp header
+#include<netinet/udp.h>	//Provides declarations for udp header
+#include<netinet/tcp.h>	//Provides declarations for tcp header
+#include<netinet/ip.h>	//Provides declarations for ip header
+#include<sys/socket.h>
+#include<arpa/inet.h>
 
 // Display stuff
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
@@ -29,10 +41,26 @@
 
 using namespace std;
 
+// Old Function declarations
 int client(bool debug); // Client
 int server(bool debug); // Server
 int md5(char * fileName); // MD5
 int fsize(FILE * fp); // File Size
+
+// New function declarations
+void ProcessPacket(unsigned char* , int);
+void print_ip_header(unsigned char* , int);
+void print_tcp_packet(unsigned char* , int);
+void print_udp_packet(unsigned char * , int);
+void print_icmp_packet(unsigned char* , int);
+void PrintData (unsigned char* , int);
+
+// New Variables declrations
+int sock_raw;
+FILE *logfile;
+int tcp=0,udp=0,icmp=0,others=0,igmp=0,total=0,i,j;
+struct sockaddr_in source,dest;
+
 
 // Main function, parses arguments to determine server/client
 int main(int argc, char * argv[]) { 
@@ -274,6 +302,7 @@ int client(bool debug) {
 
 // Server function, connects to a client, recieves packets of file contents, and writes result to file
 int server(bool debug) { 
+	logfile=fopen("log.txt","w");
 	// Declare necessary variables
     int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, totalRecieved = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     struct sockaddr_in serv_addr;
@@ -394,6 +423,11 @@ int server(bool debug) {
                             } else {
                                 cout << "\n";
                             }
+							
+							unsigned char* processBuffer = reinterpret_cast<unsigned char *>( recieveBuffer );
+							// Process Packet
+							ProcessPacket(processBuffer , b);
+							
                             if (packetNum == 9 && debug == false) {
                                 cout << "\nRecieving Remaining Packets...\n" << FORECYN;
                             }
@@ -452,4 +486,137 @@ int fsize(FILE * fp) {
     int sz = ftell(fp);
     fseek(fp, prev, SEEK_SET);
     return sz;
+}
+
+
+void ProcessPacket(unsigned char* buffer, int size)
+{
+	//Get the IP Header part of this packet
+	struct iphdr *iph = (struct iphdr*)buffer;
+	++total;
+	// Parse TCP packet header
+	try {
+		print_tcp_packet(buffer , size);
+	} catch (int error){
+		cout << "\nError Getting TCP Headder: " << error;
+	}
+	// printf("TCP : %d   UDP : %d   ICMP : %d   IGMP : %d   Others : %d   Total : %d\r",tcp,udp,icmp,igmp,others,total);
+}
+
+void print_ip_header(unsigned char* Buffer, int Size)
+{
+	unsigned short iphdrlen;
+		
+	struct iphdr *iph = (struct iphdr *)Buffer;
+	iphdrlen =iph->ihl*4;
+	
+	memset(&source, 0, sizeof(source));
+	source.sin_addr.s_addr = iph->saddr;
+	
+	memset(&dest, 0, sizeof(dest));
+	dest.sin_addr.s_addr = iph->daddr;
+	
+	fprintf(logfile,"\n");
+	fprintf(logfile,"IP Header\n");
+	fprintf(logfile,"   |-IP Version        : %d\n",(unsigned int)iph->version);
+	fprintf(logfile,"   |-IP Header Length  : %d DWORDS or %d Bytes\n",(unsigned int)iph->ihl,((unsigned int)(iph->ihl))*4);
+	fprintf(logfile,"   |-Type Of Service   : %d\n",(unsigned int)iph->tos);
+	fprintf(logfile,"   |-IP Total Length   : %d  Bytes(Size of Packet)\n",ntohs(iph->tot_len));
+	fprintf(logfile,"   |-Identification    : %d\n",ntohs(iph->id));
+	//fprintf(logfile,"   |-Reserved ZERO Field   : %d\n",(unsigned int)iphdr->ip_reserved_zero);
+	//fprintf(logfile,"   |-Dont Fragment Field   : %d\n",(unsigned int)iphdr->ip_dont_fragment);
+	//fprintf(logfile,"   |-More Fragment Field   : %d\n",(unsigned int)iphdr->ip_more_fragment);
+	fprintf(logfile,"   |-TTL      : %d\n",(unsigned int)iph->ttl);
+	fprintf(logfile,"   |-Protocol : %d\n",(unsigned int)iph->protocol);
+	fprintf(logfile,"   |-Checksum : %d\n",ntohs(iph->check));
+	cout << " |-IP Checksum: " << ntohs(iph->check) << "\n";
+	fprintf(logfile,"   |-Source IP        : %s\n",inet_ntoa(source.sin_addr));
+	fprintf(logfile,"   |-Destination IP   : %s\n",inet_ntoa(dest.sin_addr));
+}
+
+void print_tcp_packet(unsigned char* Buffer, int Size)
+{
+	unsigned short iphdrlen;
+	
+	struct iphdr *iph = (struct iphdr *)Buffer;
+	iphdrlen = iph->ihl*4;
+	
+	struct tcphdr *tcph=(struct tcphdr*)(Buffer + iphdrlen);
+			
+	fprintf(logfile,"\n\n***********************TCP Packet*************************\n");	
+		
+	print_ip_header(Buffer,Size);
+		
+	fprintf(logfile,"\n");
+	fprintf(logfile,"TCP Header\n");
+	fprintf(logfile,"   |-Source Port      : %u\n",ntohs(tcph->source));
+	fprintf(logfile,"   |-Destination Port : %u\n",ntohs(tcph->dest));
+	fprintf(logfile,"   |-Sequence Number    : %u\n",ntohl(tcph->seq));
+	fprintf(logfile,"   |-Acknowledge Number : %u\n",ntohl(tcph->ack_seq));
+	cout << " |-Ack #: " << ntohl(tcph->ack_seq) << "\n";
+	fprintf(logfile,"   |-Header Length      : %d DWORDS or %d BYTES\n" ,(unsigned int)tcph->doff,(unsigned int)tcph->doff*4);
+	//fprintf(logfile,"   |-CWR Flag : %d\n",(unsigned int)tcph->cwr);
+	//fprintf(logfile,"   |-ECN Flag : %d\n",(unsigned int)tcph->ece);
+	fprintf(logfile,"   |-Urgent Flag          : %d\n",(unsigned int)tcph->urg);
+	fprintf(logfile,"   |-Acknowledgement Flag : %d\n",(unsigned int)tcph->ack);
+	fprintf(logfile,"   |-Push Flag            : %d\n",(unsigned int)tcph->psh);
+	fprintf(logfile,"   |-Reset Flag           : %d\n",(unsigned int)tcph->rst);
+	fprintf(logfile,"   |-Synchronise Flag     : %d\n",(unsigned int)tcph->syn);
+	fprintf(logfile,"   |-Finish Flag          : %d\n",(unsigned int)tcph->fin);
+	fprintf(logfile,"   |-Window         : %d\n",ntohs(tcph->window));
+	cout << " |-Window: " << ntohs(tcph->window) << "\n";
+	fprintf(logfile,"   |-Checksum       : %d\n",ntohs(tcph->check));
+	cout << " |-TCP Checksum: " << ntohs(tcph->check) << "\n\n";
+	fprintf(logfile,"   |-Urgent Pointer : %d\n",tcph->urg_ptr);
+	fprintf(logfile,"\n");
+	fprintf(logfile,"                        DATA Dump                         ");
+	fprintf(logfile,"\n");
+		
+	fprintf(logfile,"IP Header\n");
+	PrintData(Buffer,iphdrlen);
+		
+	fprintf(logfile,"TCP Header\n");
+	PrintData(Buffer+iphdrlen,tcph->doff*4);
+		
+	fprintf(logfile,"Data Payload\n");	
+	PrintData(Buffer + iphdrlen + tcph->doff*4 , (Size - tcph->doff*4-iph->ihl*4) );
+						
+	fprintf(logfile,"\n###########################################################");
+}
+
+void PrintData (unsigned char* data , int Size)
+{
+	
+	for(i=0 ; i < Size ; i++)
+	{
+		if( i!=0 && i%16==0)   //if one line of hex printing is complete...
+		{
+			fprintf(logfile,"         ");
+			for(j=i-16 ; j<i ; j++)
+			{
+				if(data[j]>=32 && data[j]<=128)
+					fprintf(logfile,"%c",(unsigned char)data[j]); //if its a number or alphabet
+				
+				else fprintf(logfile,"."); //otherwise print a dot
+			}
+			fprintf(logfile,"\n");
+		} 
+		
+		if(i%16==0) fprintf(logfile,"   ");
+			fprintf(logfile," %02X",(unsigned int)data[i]);
+				
+		if( i==Size-1)  //print the last spaces
+		{
+			for(j=0;j<15-i%16;j++) fprintf(logfile,"   "); //extra spaces
+			
+			fprintf(logfile,"         ");
+			
+			for(j=i-i%16 ; j<=i ; j++)
+			{
+				if(data[j]>=32 && data[j]<=128) fprintf(logfile,"%c",(unsigned char)data[j]);
+				else fprintf(logfile,".");
+			}
+			fprintf(logfile,"\n");
+		}
+	}
 }
