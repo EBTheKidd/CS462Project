@@ -488,9 +488,8 @@ int fsize(FILE * fp) {
     return sz;
 }
 
-
-void ProcessPacket(unsigned char* buffer, int size)
-{
+// Process packet buffer to extract IP and TCP headers
+void ProcessPacket(unsigned char* buffer, int size) {
 	//Get the IP Header part of this packet
 	struct iphdr *iph = (struct iphdr*)buffer;
 	++total;
@@ -503,8 +502,8 @@ void ProcessPacket(unsigned char* buffer, int size)
 	// printf("TCP : %d   UDP : %d   ICMP : %d   IGMP : %d   Others : %d   Total : %d\r",tcp,udp,icmp,igmp,others,total);
 }
 
-void print_ip_header(unsigned char* Buffer, int Size)
-{
+// Print IP Header information. Writes header to file as well as outputs necessary info to console
+void print_ip_header(unsigned char* Buffer, int Size) {
 	unsigned short iphdrlen;
 		
 	struct iphdr *iph = (struct iphdr *)Buffer;
@@ -534,8 +533,8 @@ void print_ip_header(unsigned char* Buffer, int Size)
 	fprintf(logfile,"   |-Destination IP   : %s\n",inet_ntoa(dest.sin_addr));
 }
 
-void print_tcp_packet(unsigned char* Buffer, int Size)
-{
+// Print TCP Header information. Writes header to file as well as outputs necessary info to console
+void print_tcp_packet(unsigned char* Buffer, int Size) {
 	unsigned short iphdrlen;
 	
 	struct iphdr *iph = (struct iphdr *)Buffer;
@@ -584,8 +583,8 @@ void print_tcp_packet(unsigned char* Buffer, int Size)
 	fprintf(logfile,"\n###########################################################");
 }
 
-void PrintData (unsigned char* data , int Size)
-{
+// Prints raw data of the packet
+void PrintData (unsigned char* data , int Size) {
 	
 	for(i=0 ; i < Size ; i++)
 	{
