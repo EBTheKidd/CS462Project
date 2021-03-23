@@ -310,7 +310,7 @@ int client(bool debug) {
                 // Set packet ttl to 4 (idk wtf this is supposed to be but tan said include it so... whatever...)
                 sendPacket.ttl = 4;
                 // Set packet payload as sendbuffer
-				memset(sendPacket.payload, 0, b);
+				memset(sendPacket.payload, '\0', b);
                 strncpy(sendPacket.payload, sendbuffer, sizeof(sendbuffer));
                 // Declare final packet if this is the last packet
                 if (b < packetSize) {
@@ -486,12 +486,6 @@ int server(bool debug) {
                     packet recievedPacket;
                     if (((b = recv(confd, &recievedPacket, sizeof(recievedPacket), MSG_WAITALL)) > 0)) {
                         fileBytesRecieved += sizeof(recievedPacket.payload);
-						char recievedData[packetSize];
-						for (int i = 0; i < packetSize; i++){
-							recievedData[i] = recievedPacket.payload[i];
-						}
-						
-						
 						
                         // Print output, if debug is enabled all packets will be printed, otherwise only print first 10 packets and then progress bar for remaining packets
                         if (packetNum < 10 || debug == true) {
@@ -516,7 +510,7 @@ int server(bool debug) {
                             cout << "Final Packet Recieved!\n";
                         }
                         // Write packet to file
-                        fwrite(recievedData, 1, packetSize, fp);
+                        fwrite(recievedPacket.payload, 1, packetSize, fp);
                         // Increase packet count
                         packetNum++;
                         // Switch to validation/protocol mode
