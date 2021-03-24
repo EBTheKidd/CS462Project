@@ -328,6 +328,10 @@ int client(bool debug) {
             break;
         case 2:
 		{
+			// Recieve ack here
+			
+			
+			
             if (pMode == 1) {
                 // Place GBN client functionality here
             } else if (pMode == 2) {
@@ -522,6 +526,11 @@ int server(bool debug) {
                     break;
                 case 2:
 				{
+					// Send ack here
+					
+					
+					
+					
                     if (pMode == 1) {
                         // Place GBN server functionality here
                     } else if (pMode == 2) {
