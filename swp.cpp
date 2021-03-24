@@ -497,19 +497,19 @@ int server(bool debug) {
                                 cout << "\n";
                             }
 							
-							// Validate checksum 
-							if (recievedPacket->checksum == crcNew){
-								cout << FOREGRN << "Checksum OK\n" << RESETTEXT;
-							} else {
-								cout << FORERED << "Checksum failed\n" << RESETTEXT;
-								// In here, we will probably implement some portion of GBN or SR due to the checksum mismatch
-							}
-							
 							// If not in debug, print filler message after 10 packets
                             if (packetNum == 9 && debug == false) {
                                 cout << "\nRecieving Remaining Packets...\n" << FORECYN;
                             }
                         }
+						
+						// Validate checksum 
+						if (recievedPacket->checksum == crcNew){
+							cout << FOREGRN << "Checksum OK\n" << RESETTEXT;
+						} else {
+							cout << FORERED << "Checksum failed\n" << RESETTEXT;
+							// In here, we will probably implement some portion of GBN or SR due to the checksum mismatch
+						}
 						
                         // Write packet buffer to file
                         fwrite(recievedPacket->buffer, 1, writeBytes, fp);
