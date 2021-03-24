@@ -17,9 +17,6 @@
 #include <cstdlib>
 #include <cstring>
 
-//#define BUFSIZE 512
-#define PACKETSIZE sizeof(MSG)
-
 // Display stuff
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
 #define FORERED "\x1B[31m" // Red
@@ -87,7 +84,7 @@ typedef struct MSG {
 // Packet functions
 void serialize(MSG* msgPacket, char *data);
 void deserialize(char *data, MSG* msgPacket);
-void compute_crc16(unsigned char *buf);
+int compute_crc16(unsigned char *buf);
 
 
 // Main function, parses arguments to determine server/client
@@ -286,8 +283,8 @@ int client(bool debug) {
 				newMsg->seq = packetNum;
 				newMsg->ack = 5;
 				newMsg->window_size = 10;
-				newMsg->checksum = 555;
-				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer);
+				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer)); // compute crc16
+				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer); // cast char[] to packet buffer
 				if (b < fileReadSize) {
                     newMsg->finalPacket = true;
 					transferFinished = true;
@@ -295,9 +292,6 @@ int client(bool debug) {
                 } else {
                     newMsg->finalPacket = false;
                 }
-				
-				// Compute CRC16
-				compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer));
 				
                 // Print output
                 if (packetNum < 10 || debug == true) {
@@ -473,17 +467,17 @@ int server(bool debug) {
 						int writeBytes = b - sizeof(MSG);
 						
 						// Deserialize packet
-						MSG* temp = new MSG;
-						deserialize(data, temp);
+						MSG* recievedPacket = new MSG;
+						deserialize(data, recievedPacket);
 						
-						// Compute CRC16 
-						MSG* temp2 = new MSG;
+						// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
+						MSG* temp = new MSG;
 						memcpy( data2, data, sizeof(data) );
-						deserialize(data2, temp2);
-						compute_crc16(temp2->buffer);
+						deserialize(data2, temp);
+						int crcNew = compute_crc16(temp->buffer);
 						
 						// Determine if current packet is final packet
-                        if (temp->finalPacket == true) {
+                        if (recievedPacket->finalPacket == true) {
                             transferFinished = true;
                             run = false;
                         }
@@ -498,10 +492,18 @@ int server(bool debug) {
 								// Write packet bytes size
                                 cout << "(" << b << " bytes)\n";
 								// print packet data
-								temp->print();
+								recievedPacket->print();
                             } else {
                                 cout << "\n";
                             }
+							
+							// Validate checksum 
+							if (recievedPacket->checksum == crcNew){
+								cout << FOREGRN << "Checksum OK\n" << RESETTEXT;
+							} else {
+								cout << FORERED << "Checksum failed\n" << RESETTEXT;
+								// In here, we will probably implement some portion of GBN or SR due to the checksum mismatch
+							}
 							
 							// If not in debug, print filler message after 10 packets
                             if (packetNum == 9 && debug == false) {
@@ -510,7 +512,7 @@ int server(bool debug) {
                         }
 						
                         // Write packet buffer to file
-                        fwrite(temp->buffer, 1, writeBytes, fp);
+                        fwrite(recievedPacket->buffer, 1, writeBytes, fp);
                         // Increase packet count
                         packetNum++;
                         // Switch to validation/protocol mode
@@ -620,7 +622,7 @@ void deserialize(char *data, MSG* msgPacket) {
 }
 
 // compute_crc16 function, used to quickly ensure packet integrity
-void compute_crc16(unsigned char *buf){
+int compute_crc16(unsigned char *buf){
 	unsigned char x;
 	unsigned short crc = 0xFFFF;
 
@@ -630,5 +632,5 @@ void compute_crc16(unsigned char *buf){
 		x ^= x>>4;
 		crc = (crc << 8) ^ ((unsigned short)(x << 12)) ^ ((unsigned short)(x <<5)) ^ ((unsigned short)x);
 	}
-	cout << "Computed Checksum: " << crc << "\n";
+	return (int) crc;
 }
