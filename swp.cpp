@@ -1,52 +1,24 @@
 // Old Includes
 #include <sys/socket.h>
-
 #include <netinet/in.h>
-
 #include <sys/types.h>
-
 #include <arpa/inet.h>
-
 #include <stdio.h>
-
 #include <stdlib.h>
-
 #include <stdint.h>
-
 #include <unistd.h>
-
 #include <errno.h>
-
 #include <string.h>
-
 #include <iomanip>
-
 #include <iostream>
-
 #include <netdb.h>
-
 #include <errno.h>
-
 #include <sstream>
+#include <cstdlib>
+#include <cstring>
 
-// New Includes
-#include<stdio.h>	//For standard things
-
-#include<stdlib.h>	//malloc
-
-#include<string.h>	//memset
-
-#include<netinet/ip_icmp.h>	//Provides declarations for icmp header
-
-#include<netinet/udp.h>	//Provides declarations for udp header
-
-#include<netinet/tcp.h>	//Provides declarations for tcp header
-
-#include<netinet/ip.h>	//Provides declarations for ip header
-
-#include<sys/socket.h>
-
-#include<arpa/inet.h>
+#define BUFSIZE 512
+#define PACKETSIZE sizeof(MSG)
 
 // Display stuff
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
@@ -63,8 +35,8 @@
 // Phoneix3: 10.34.195.236
 
 // VALGRIND COMMANDS:
-// valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=leak.txt ./swp -c
-// valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=leak.txt ./swp -s
+// valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=leak.txt ./swp -c -d
+// valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=leak.txt ./swp -s -d
 
 using namespace std;
 
@@ -79,30 +51,41 @@ bool debug = false, isServer = false, isClient = false;
 int md5(char * fileName); // MD5
 int fsize(FILE * fp); // File Size
 
-// Packet
-struct packet {
-    char source[64];
-    char dest[64];
-    uint32_t seq;
-    uint16_t ttl;
-    char payload[10000];
-    uint16_t payloadSize;
-    uint16_t crc;
-    bool finalPacket;
+// Packet Struct
+typedef struct MSG {
+    int src_port;
+    int dst_port;
+    int seq;
+    int ack;
+    int window_size;
+    int checksum;
+	bool finalPacket;
+    unsigned char *buffer;
+	
+	
+	void print()
+	{
+		try {
+			cout << "  ========PACKET=======\n";
+			cout << "  |-source: " << src_port << "\n";
+			cout << "  |-dest: " << dst_port << "\n";
+			cout << "  |-seq: " << seq << "\n";
+			cout << "  |-ack: " << ack << "\n";
+			cout << "  |-window size: " << window_size << "\n";
+			cout << "  |-checksum: " << checksum << "\n";
+			cout << "  |-buffer: '" << buffer << "'\n";
+			cout << "  |-final: " << finalPacket << "\n";
+			cout << "  =====================\n";
+		} catch (int i){
+			
+		}
+	}
+}MSG;
 
-    void print() {
-        cout << "  ========PACKET=======\n";
-        cout << "  |-source: " << source << "\n";
-        cout << "  |-dest: " << dest << "\n";
-        cout << "  |-seq: " << seq << "\n";
-        cout << "  |-ttl: " << ttl << "\n";
-        cout << "  |-payload size: " << payloadSize << "\n";
-        cout << "  |-payload: '" << payload << "'\n";
-        cout << "  |-crc: " << crc << "\n";
-        cout << "  |-final: " << finalPacket << "\n";
-        cout << "  =====================\n";
-    }
-};
+// Packet Serialize/Deserialize functions
+void serialize(MSG* msgPacket, char *data);
+void deserialize(char *data, MSG* msgPacket);
+
 
 // Main function, parses arguments to determine server/client
 int main(int argc, char * argv[]) {
@@ -142,7 +125,7 @@ int main(int argc, char * argv[]) {
 // Client function, send file to server
 int client(bool debug) {
     // Declare necessary variables/structures
-    int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, fileBytesSent = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
+    int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     char ip[32], fileName[64], dropPackets[1024], looseAcks[1024];
     struct sockaddr_in serv_addr;
 
@@ -279,69 +262,63 @@ int client(bool debug) {
 
     // Set client variables
     int mode = 1;
-    bool run = true;
-    int packetCounter = 0;
-    bool transferFinished = false;
+    bool run = true, transferFinished = false;
     // Loop until total bytes sent is equal to file size bytes
     cout << "\n[File Transfer]\n" << RESETTEXT;
     while (run) {
         switch (mode) {
         case 1: 
 		{
-            packet sendPacket;
-            memset(sendbuffer, 0, sizeof(sendbuffer));
+			int fileReadSize = packetSize - sizeof(MSG); // amount of file to read, with accounting for size of struct
+            memset(sendbuffer, 0, fileReadSize); // memset sendbuffer to make sure its empty (might not be needed)
             // read/send file by desired packet size
-            if (((b = fread(sendbuffer, 1, sizeof(sendbuffer), fp)) > 0)) {
-                fileBytesSent += b;
-                packetCounter++;
-
+            if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
+				// Initialize char array for packet serialization
+				char data[sizeof(MSG) + b];
+				
                 // Build Packet
-
-                // Resolve local host name/ip for packet source
-                char szHostName[255];
-                gethostname(szHostName, 255);
-                struct hostent * host_entry;
-                host_entry = gethostbyname(szHostName);
-                char * szLocalIP;
-                szLocalIP = inet_ntoa( * (struct in_addr * ) * host_entry -> h_addr_list);
-                strncpy(sendPacket.source, szLocalIP, sizeof(szLocalIP));
-                // Set packet dest as destination IP
-                strncpy(sendPacket.dest, ip, sizeof(ip));
-                // Set packet seq as current packet #
-                sendPacket.seq = packetCounter;
-                // Set packet ttl to 4 (idk wtf this is supposed to be but tan said include it so... whatever...)
-                sendPacket.ttl = 4;
-				// Set packet payload size
-				sendPacket.payloadSize = b;
-                // Set packet payload as sendbuffer
-				memset(sendPacket.payload, '\0', b);
-                strncpy(sendPacket.payload, sendbuffer, sizeof(sendbuffer));
-                // Declare final packet if this is the last packet
-                if (b < packetSize) {
-                    sendPacket.finalPacket = true;
+				MSG* newMsg = new MSG;
+				newMsg->src_port = 1234;
+				newMsg->dst_port = port;
+				newMsg->seq = packetNum;
+				newMsg->ack = 5;
+				newMsg->window_size = 10;
+				newMsg->checksum = 555;
+				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer);
+				if (b < fileReadSize) {
+                    newMsg->finalPacket = true;
 					transferFinished = true;
 					run = false;
-					cout << "File Sending Complete!\n";
                 } else {
-                    sendPacket.finalPacket = false;
+                    newMsg->finalPacket = false;
                 }
 				
-                // Print output, if debug is enabled all packets will be printed, otherwise only print first 10 packets and then progress bar for remaining packets
+                // Print output
                 if (packetNum < 10 || debug == true) {
+					// Print "Sent Packet x" <- x = current packet number
                     cout << "Sent Packet #" << (packetNum + 1);
+					
+					// If in debug, print every packet size and packet contents
                     if (debug) {
-                        cout << "(" << (b) << " bytes)\n";
+						// Print packet size (in bytes)
+                        cout << "(" << sizeof(data) << " bytes)\n";
+						// Print packet data
+						newMsg->print();
                     } else {
                         cout << "\n";
                     }
-
-                    sendPacket.print();
+					
+					// If not in debug, print filler message after 10 packets
                     if (packetNum == 9 && debug == false) {
                         cout << "\nSending Remaining Packets...\n" << FORECYN;
                     }
                 }
+				
+				// Serialize packet into char array
+				serialize(newMsg, data);
+				
                 // Send Packet
-                send(sfd, &sendPacket, sizeof(sendPacket), 0);
+                send(sfd, data, sizeof(data), 0);
                 // Increase packet counter
                 packetNum++;
                 // Switch to validation/protocol mode
@@ -380,7 +357,7 @@ int client(bool debug) {
 // Server function, connects to a client, recieves packets of file contents, and writes result to file
 int server(bool debug) {
     // Declare necessary variables
-    int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, fileBytesRecieved = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
+    int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     struct sockaddr_in serv_addr;
     char fileName[64], initialBuff[32], ip[32];
     bool transferFinished = false;
@@ -392,7 +369,6 @@ int server(bool debug) {
         cout << FORERED << "Invalid IP Input Entered... please try again\n" << RESETTEXT;
         return 0;
     }
-
     // Get port from user
     cout << "Port: ";
     cin >> port;
@@ -400,7 +376,6 @@ int server(bool debug) {
         cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
         return 0;
     }
-
     // Get output file from user
     cout << "Output File Name: ";
     scanf("%64s", fileName);
@@ -408,7 +383,6 @@ int server(bool debug) {
         cout << FORERED << "Invalid Output File Name Input Entered... please try again\n" << RESETTEXT;
         return 0;
     }
-
     // Initialize socket
     fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -487,33 +461,44 @@ int server(bool debug) {
                 switch (mode) {
                 case 1:
 				{
-                    packet recievedPacket;
-                    if (((b = recv(confd, &recievedPacket, sizeof(recievedPacket), MSG_WAITALL)) > 0)) {
-                        fileBytesRecieved += sizeof(recievedPacket.payload);
-                        // Print output, if debug is enabled all packets will be printed, otherwise only print first 10 packets and then progress bar for remaining packets
+					char data[packetSize];
+                    if (((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0)) {
+						// Calculate amount of bytes to write to file
+						int writeBytes = b - sizeof(MSG);
+						
+						// Deserialize packet
+						MSG* temp = new MSG;
+						deserialize(data, temp);
+						
+						// Determine if current packet is final packet
+                        if (temp->finalPacket == true) {
+                            transferFinished = true;
+                            run = false;
+                        }
+						
+                        // Print output
                         if (packetNum < 10 || debug == true) {
-
+							// Print "Sent Packet x" <- x = current packet number
                             cout << "Recieved Packet #" << (packetNum + 1);
+							
+							// If in debug, print every packet size and packet contents
                             if (debug) {
+								// Write packet bytes size
                                 cout << "(" << b << " bytes)\n";
+								// print packet data
+								temp->print();
                             } else {
                                 cout << "\n";
                             }
-
-                            recievedPacket.print();
-
+							
+							// If not in debug, print filler message after 10 packets
                             if (packetNum == 9 && debug == false) {
                                 cout << "\nRecieving Remaining Packets...\n" << FORECYN;
                             }
                         }
-                        // Determine if current packet is final packet
-                        if (recievedPacket.finalPacket) {
-                            transferFinished = true;
-                            run = false;
-                            cout << "Final Packet Recieved!\n";
-                        }
-                        // Write packet to file
-                        fwrite(recievedPacket.payload, 1, recievedPacket.payloadSize, fp);
+						
+                        // Write packet buffer to file
+                        fwrite(temp->buffer, 1, writeBytes, fp);
                         // Increase packet count
                         packetNum++;
                         // Switch to validation/protocol mode
@@ -569,4 +554,55 @@ int fsize(FILE * fp) {
     int sz = ftell(fp);
     fseek(fp, prev, SEEK_SET);
     return sz;
+}
+
+// serialize function, used to convert packet struct into char array for sending over sockets
+void serialize(MSG* msgPacket, char *data) {
+	// Ints
+    int *q = (int*)data;    
+    *q = msgPacket->src_port;       q++;    
+    *q = msgPacket->dst_port;       q++;    
+    *q = msgPacket->seq;            q++; 
+    *q = msgPacket->ack;            q++; 
+    *q = msgPacket->window_size;    q++;
+    *q = msgPacket->checksum;       q++;
+	// Bools
+	bool *b = (bool*)q;
+	*b = msgPacket->finalPacket;	b++;
+	// Chars
+    char *p = (char*)b;
+    int i = 0;
+    while (i < BUFSIZE)
+    {
+        *p = msgPacket->buffer[i];
+        p++;
+        i++;
+    }
+}
+
+// deserialize function, used to convert char array from socket into packet struct
+void deserialize(char *data, MSG* msgPacket) {
+	// Ints
+    int *q = (int*)data;    
+    msgPacket->src_port = *q;        q++;    
+    msgPacket->dst_port = *q;        q++;    
+    msgPacket->seq = *q;             q++; 
+    msgPacket->ack = *q;             q++; 
+    msgPacket->window_size = *q;     q++; 
+    msgPacket->checksum = *q;        q++;
+	// Bools
+	bool *b = (bool*)q;
+	msgPacket->finalPacket = *b;     b++;
+	// Chars
+    char *p = (char*)b;
+    int i = 0;
+	unsigned char buf[BUFSIZE];
+    while (i < BUFSIZE)
+    {
+		buf[i] = *p;
+		p++;
+		i++;
+    }
+	msgPacket->buffer = reinterpret_cast<unsigned char*>(malloc(sizeof(unsigned char) * BUFSIZE));
+	memcpy( msgPacket->buffer, buf, sizeof(buf) );
 }
