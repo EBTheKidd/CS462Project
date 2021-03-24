@@ -50,7 +50,7 @@ int md5(char * fileName); // MD5
 int fsize(FILE * fp); // File Size
 
 // Packet Struct
-typedef struct MSG {
+typedef struct PACKET {
     int src_port;
     int dst_port;
     int seq;
@@ -79,11 +79,11 @@ typedef struct MSG {
 	}
 
 	
-}MSG;
+}PACKET;
 
 // Packet functions
-void serialize(MSG* msgPacket, char *data);
-void deserialize(char *data, MSG* msgPacket);
+void serialize(PACKET* msgPacket, char *data);
+void deserialize(char *data, PACKET* msgPacket);
 int compute_crc16(unsigned char *buf);
 
 
@@ -269,15 +269,15 @@ int client(bool debug) {
         switch (mode) {
         case 1: 
 		{
-			int fileReadSize = packetSize - sizeof(MSG); // amount of file to read, with accounting for size of struct
+			int fileReadSize = packetSize - sizeof(PACKET); // amount of file to read, with accounting for size of struct
             memset(sendbuffer, 0, fileReadSize); // memset sendbuffer to make sure its empty (might not be needed)
             // read/send file by desired packet size
             if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
 				// Initialize char array for packet serialization
-				char data[sizeof(MSG) + b];
+				char data[sizeof(PACKET) + b];
 				
                 // Build Packet
-				MSG* newMsg = new MSG;
+				PACKET* newMsg = new PACKET;
 				newMsg->src_port = 1234;
 				newMsg->dst_port = port;
 				newMsg->seq = packetNum;
@@ -468,14 +468,14 @@ int server(bool debug) {
 					char data2[packetSize];
                     if (((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0)) {
 						// Calculate amount of bytes to write to file
-						int writeBytes = b - sizeof(MSG);
+						int writeBytes = b - sizeof(PACKET);
 						
 						// Deserialize packet
-						MSG* recievedPacket = new MSG;
+						PACKET* recievedPacket = new PACKET;
 						deserialize(data, recievedPacket);
 						
 						// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
-						MSG* temp = new MSG;
+						PACKET* temp = new PACKET;
 						memcpy( data2, data, sizeof(data) );
 						deserialize(data2, temp);
 						int crcNew = compute_crc16(temp->buffer);
@@ -580,7 +580,7 @@ int fsize(FILE * fp) {
 }
 
 // serialize function, used to convert packet struct into char array for sending over sockets
-void serialize(MSG* msgPacket, char *data) {
+void serialize(PACKET* msgPacket, char *data) {
 	// Ints
     int *q = (int*)data;    
     *q = msgPacket->src_port;       q++;    
@@ -604,7 +604,7 @@ void serialize(MSG* msgPacket, char *data) {
 }
 
 // deserialize function, used to convert char array from socket into packet struct
-void deserialize(char *data, MSG* msgPacket) {
+void deserialize(char *data, PACKET* msgPacket) {
 	// Ints
     int *q = (int*)data;    
     msgPacket->src_port = *q;        q++;    
