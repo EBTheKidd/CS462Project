@@ -6,5 +6,5 @@
 ![](demo.PNG)
 
 ## TODO
-1. Implement CRC Checksum                                           [In Progress]
-3. Implement Go-Back-N & Selective Repeat protocol simulations      [Not Started]
+1. Implement CRC Checksum                                                                   [In Progress]
+2. Implement Go-Back-N & Selective Repeat protocol simulations                              [Not Started]
