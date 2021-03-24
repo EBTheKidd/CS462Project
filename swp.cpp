@@ -54,7 +54,6 @@ typedef struct PACKET {
     int src_port;
     int dst_port;
     int seq;
-    int ack;
     int window_size;
     int checksum;
 	bool finalPacket;
@@ -67,10 +66,9 @@ typedef struct PACKET {
 			cout << "  |-source: " << src_port << "\n";
 			cout << "  |-dest: " << dst_port << "\n";
 			cout << "  |-seq: " << seq << "\n";
-			cout << "  |-ack: " << ack << "\n";
 			cout << "  |-window size: " << window_size << "\n";
 			cout << "  |-checksum: " << checksum << "\n";
-			cout << "  |-buffer: '" << buffer << "'\n";
+			//cout << "  |-buffer: '" << buffer << "'\n";
 			cout << "  |-final: " << finalPacket << "\n";
 			cout << "  =====================\n";
 		} catch (int i){
@@ -267,84 +265,87 @@ int client(bool debug) {
     cout << "\n[File Transfer]\n" << RESETTEXT;
     while (run) {
         switch (mode) {
-        case 1: 
-		{
-			int fileReadSize = packetSize - sizeof(PACKET); // amount of file to read, with accounting for size of struct
-            memset(sendbuffer, 0, fileReadSize); // memset sendbuffer to make sure its empty (might not be needed)
-            // read/send file by desired packet size
-            if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
-				// Initialize char array for packet serialization
-				char data[sizeof(PACKET) + b];
-				
-                // Build Packet
-				PACKET* newMsg = new PACKET;
-				newMsg->src_port = 1234;
-				newMsg->dst_port = port;
-				newMsg->seq = packetNum;
-				newMsg->ack = 5;
-				newMsg->window_size = 10;
-				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer)); // compute crc16
-				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer); // cast char[] to packet buffer
-				if (b < fileReadSize) {
-                    newMsg->finalPacket = true;
-					transferFinished = true;
+			case 1: {
+				int fileReadSize = packetSize - sizeof(PACKET); // amount of file to read, with accounting for size of struct
+				memset(sendbuffer, 0, fileReadSize); // memset sendbuffer to make sure its empty (might not be needed)
+				// read/send file by desired packet size
+				if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
+					// Initialize char array for packet serialization
+					char data[sizeof(PACKET) + b];
+					
+					// Build Packet
+					PACKET* newMsg = new PACKET;
+					newMsg->src_port = 1234;
+					newMsg->dst_port = port;
+					newMsg->seq = packetNum;
+					newMsg->window_size = 10;
+					newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer)); // compute crc16
+					newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer); // cast char[] to packet buffer
+					if (b < fileReadSize) {
+						newMsg->finalPacket = true;
+						transferFinished = true;
+					} else {
+						newMsg->finalPacket = false;
+					}
+					
+					// Print output
+					if (packetNum < 10 || debug == true) {
+						// Print "Sent Packet x" <- x = current packet number
+						cout << "Sent Packet #" << packetNum;
+						
+						// If in debug, print every packet size and packet contents
+						if (debug) {
+							// Print packet size (in bytes)
+							cout << "(" << sizeof(data) << " bytes)\n";
+							// Print packet data
+							newMsg->print();
+						} else {
+							cout << "\n";
+						}
+						
+						// If not in debug, print filler message after 10 packets
+						if (packetNum == 9 && debug == false) {
+							cout << "\nSending Remaining Packets...\n" << FORECYN;
+						}
+					}
+					
+					// Serialize packet into char array
+					serialize(newMsg, data);
+					// Send Packet
+					send(sfd, data, sizeof(data), 0);
+					// Increase packet counter
+					packetNum++;
+					// Switch to validation/protocol mode
+					mode = 2;
+				}
+				break;
+			}
+			case 2: {
+				if (!transferFinished){
+					uint32_t ackResponce;
+					read(sfd, & ackResponce, sizeof(ackResponce));
+					int ack = ntohl(ackResponce);
+					if (ack == 1){
+						// Packet ACK recieved, which means that the packet was sent and recieved successfully
+						cout << "  |-" << FOREGRN << "ACK RECIEVED\n" << RESETTEXT;
+					} else if (ack == 0) {
+						// Packet NAK recieved, which means that the packet was sent and recieved successfully
+						cout << "  |-" << FORERED << "NAK RECIEVED\n" << RESETTEXT;
+					}
+					cout << "  =====================\n";
+				} else {
 					run = false;
-                } else {
-                    newMsg->finalPacket = false;
-                }
-				
-                // Print output
-                if (packetNum < 10 || debug == true) {
-					// Print "Sent Packet x" <- x = current packet number
-                    cout << "Sent Packet #" << (packetNum + 1);
-					
-					// If in debug, print every packet size and packet contents
-                    if (debug) {
-						// Print packet size (in bytes)
-                        cout << "(" << sizeof(data) << " bytes)\n";
-						// Print packet data
-						newMsg->print();
-                    } else {
-                        cout << "\n";
-                    }
-					
-					// If not in debug, print filler message after 10 packets
-                    if (packetNum == 9 && debug == false) {
-                        cout << "\nSending Remaining Packets...\n" << FORECYN;
-                    }
-                }
-				
-				// Serialize packet into char array
-				serialize(newMsg, data);
-				
-                // Send Packet
-                send(sfd, data, sizeof(data), 0);
-                // Increase packet counter
-                packetNum++;
-                // Switch to validation/protocol mode
-                mode = 2;
-            }
-		}
-            break;
-        case 2:
-		{
-			// Recieve ack here
-			
-			
-			
-            if (pMode == 1) {
-                // Place GBN client functionality here
-            } else if (pMode == 2) {
-                // Place SR client functionality here
-            }
-            mode = 1; // after validation, set mode back to 1 for normal client functions
-		}
-            break;
-        case 0:
-		{
-            cout << "Exiting...\n" << RESETTEXT;
-		}
-            break;
+				}
+									
+				// Handle protocol modes here
+				if (pMode == 1) {
+					// Place GBN client functionality here
+				} else if (pMode == 2) {
+					// Place SR client functionality here
+				}
+				mode = 1;
+				break;
+			}
         }
     }
     fclose(fp); // Close file
@@ -364,7 +365,6 @@ int server(bool debug) {
     int fd = 0, confd = 0, b, num, port, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     struct sockaddr_in serv_addr;
     char fileName[64], ip[32];
-    bool transferFinished = false;
 
     // Get IP from user
     cout << FOREWHT << "IP Address: ";
@@ -459,6 +459,10 @@ int server(bool debug) {
         if (fp != NULL) {
             int mode = 1;
             bool run = true;
+			bool packetVerified = false;
+			bool transferFinished = false;
+			int ackCounter = 0;
+			int nakCounter = 0;
             // Loop until total recieved bytes equals desired file size (recieved from client)
             while (run) {
                 switch (mode) {
@@ -466,7 +470,8 @@ int server(bool debug) {
 				{
 					char data[packetSize];
 					char data2[packetSize];
-                    if (((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0)) {
+                    if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {
+						packetVerified = false;
 						// Calculate amount of bytes to write to file
 						int writeBytes = b - sizeof(PACKET);
 						
@@ -483,13 +488,12 @@ int server(bool debug) {
 						// Determine if current packet is final packet
                         if (recievedPacket->finalPacket == true) {
                             transferFinished = true;
-                            run = false;
                         }
 						
                         // Print output
                         if (packetNum < 10 || debug == true) {
 							// Print "Sent Packet x" <- x = current packet number
-                            cout << "Recieved Packet #" << (packetNum + 1);
+                            cout << "Recieved Packet #" << packetNum;
 							
 							// If in debug, print every packet size and packet contents
                             if (debug) {
@@ -509,10 +513,11 @@ int server(bool debug) {
 						
 						// Validate checksum 
 						if (recievedPacket->checksum == crcNew){
-							cout << FOREGRN << "Checksum OK\n" << RESETTEXT;
+							packetVerified = true;
+							cout << "  |-Checksum " << FORERED << "OK\n" << RESETTEXT;
 						} else {
-							cout << FORERED << "Checksum failed\n" << RESETTEXT;
-							// In here, we will probably implement some portion of GBN or SR due to the checksum mismatch
+							packetVerified = false;
+							cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
 						}
 						
                         // Write packet buffer to file
@@ -521,24 +526,41 @@ int server(bool debug) {
                         packetNum++;
                         // Switch to validation/protocol mode
                         mode = 2;
-                    }
-				}
+                    } else {
+						cout << "Not Good...\n";
+					}
                     break;
+				}
                 case 2:
 				{
-					// Send ack here
-					
-					
-					
-					
-                    if (pMode == 1) {
+					if (!transferFinished){
+						uint32_t ackResponce;
+						if (!packetVerified){
+							ackResponce = htonl(0);
+							cout << "  |-Sending " << FORERED << "NAK " << nakCounter << "\n" << RESETTEXT;
+							nakCounter++;
+						} else {
+							ackResponce = htonl(1);
+							cout << "  |-Sending " << FOREGRN << "ACK " << ackCounter << "\n" << RESETTEXT;
+							ackCounter++;
+						}
+						cout << "  =====================\n";
+						// Send ack/nak
+						write(confd, & ackResponce, sizeof(ackResponce));
+					} else {
+						run = false;
+					}
+									
+					// Handle Protocol modes here
+					if (pMode == 1) {
                         // Place GBN server functionality here
                     } else if (pMode == 2) {
                         // Place SR server functionality here
                     }
-                    mode = 1; // after validation, set mode back to 1 for normal server functions
-				}
+						
+					mode = 1;
                     break;
+				}
                 }
 
             }
@@ -586,7 +608,6 @@ void serialize(PACKET* msgPacket, char *data) {
     *q = msgPacket->src_port;       q++;    
     *q = msgPacket->dst_port;       q++;    
     *q = msgPacket->seq;            q++; 
-    *q = msgPacket->ack;            q++; 
     *q = msgPacket->window_size;    q++;
     *q = msgPacket->checksum;       q++;
 	// Bools
@@ -610,7 +631,6 @@ void deserialize(char *data, PACKET* msgPacket) {
     msgPacket->src_port = *q;        q++;    
     msgPacket->dst_port = *q;        q++;    
     msgPacket->seq = *q;             q++; 
-    msgPacket->ack = *q;             q++; 
     msgPacket->window_size = *q;     q++; 
     msgPacket->checksum = *q;        q++;
 	// Bools
