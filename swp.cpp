@@ -17,7 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#define BUFSIZE 512
+//#define BUFSIZE 512
 #define PACKETSIZE sizeof(MSG)
 
 // Display stuff
@@ -46,6 +46,7 @@ int server(bool debug); // Server
 
 // Server/Client Variables
 bool debug = false, isServer = false, isClient = false;
+int packetSize = 512;
 
 // File info functions
 int md5(char * fileName); // MD5
@@ -125,7 +126,7 @@ int main(int argc, char * argv[]) {
 // Client function, send file to server
 int client(bool debug) {
     // Declare necessary variables/structures
-    int sfd = 0, n = 0, b, port, packetSize, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
+    int sfd = 0, n = 0, b, port, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     char ip[32], fileName[64], dropPackets[1024], looseAcks[1024];
     struct sockaddr_in serv_addr;
 
@@ -354,12 +355,12 @@ int client(bool debug) {
     return 0;
 }
 
-// Server function, connects to a client, recieves packets of file contents, and writes result to file
+// Server function, recieve file from client
 int server(bool debug) {
     // Declare necessary variables
-    int fd = 0, confd = 0, b, num, port, packetSize, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
+    int fd = 0, confd = 0, b, num, port, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     struct sockaddr_in serv_addr;
-    char fileName[64], initialBuff[32], ip[32];
+    char fileName[64], ip[32];
     bool transferFinished = false;
 
     // Get IP from user
@@ -388,7 +389,6 @@ int server(bool debug) {
 
     // Allocate memory for server address and initial buffer (used to get packet size)
     memset( & serv_addr, '0', sizeof(serv_addr));
-    memset(initialBuff, '0', sizeof(initialBuff));
 
     // Set family, port, and ip address for socket	
     serv_addr.sin_family = AF_INET;
@@ -572,7 +572,7 @@ void serialize(MSG* msgPacket, char *data) {
 	// Chars
     char *p = (char*)b;
     int i = 0;
-    while (i < BUFSIZE)
+    while (i < packetSize)
     {
         *p = msgPacket->buffer[i];
         p++;
@@ -596,13 +596,13 @@ void deserialize(char *data, MSG* msgPacket) {
 	// Chars
     char *p = (char*)b;
     int i = 0;
-	unsigned char buf[BUFSIZE];
-    while (i < BUFSIZE)
+	unsigned char buf[packetSize];
+    while (i < packetSize)
     {
 		buf[i] = *p;
 		p++;
 		i++;
     }
-	msgPacket->buffer = reinterpret_cast<unsigned char*>(malloc(sizeof(unsigned char) * BUFSIZE));
+	msgPacket->buffer = reinterpret_cast<unsigned char*>(malloc(sizeof(unsigned char) * packetSize));
 	memcpy( msgPacket->buffer, buf, sizeof(buf) );
 }
