@@ -130,94 +130,116 @@ int client(bool debug) {
     // Initialize socket
     sfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    // Get server IP from user
-    cout << FOREWHT << "IP Address: ";
-    scanf("%15s", ip);
-    if (strlen(ip) == 0) {
-        cout << FORERED << "Invalid IP Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
+      // Get server IP from user
+    do {
+		cout << FOREWHT << "IP Address: ";
+		scanf("%15s", ip);
+		if (strlen(ip) == 0) {
+			cout << FORERED << "Invalid IP Input Entered... please try again\n" << RESETTEXT;
+		}
+    } while (strlen(ip) == 0);
+	
     // Get server Port from user
-    cout << "Port: ";
-    cin >> port;
-    if (port < 1) {
-        cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
+    do {
+		cout << "Port: ";
+		cin >> port;
+		if (port < 1) {
+			cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
+		}
+    } while (port < 1);
+	
     // Get file name from user
-    cout << "File Name: ";
-    scanf("%64s", fileName);
-    if (strlen(fileName) == 0) {
-        cout << FORERED << "Invalid File Name Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
+    do {
+		cout << "File Name: ";
+		scanf("%64s", fileName);
+		if (strlen(fileName) == 0) {
+			cout << FORERED << "Invalid File Name Input Entered... please try again\n" << RESETTEXT;
+        }
+    } while (strlen(fileName) == 0);
+	
     // Open file for sending
     FILE * fp = fopen(fileName, "rb");
     if (fp == NULL) {
         cout << FORERED << "ERROR OPENING FILE...\n" << RESETTEXT;
         perror("File");
         return 2;
-    }
+    }	
     int fileSize = fsize(fp);
+	
     // Get packet size from user
-    cout << "Packet Size (bytes): ";
-    cin >> packetSize;
-    if (packetSize < 1) {
-        cout << FORERED << "Invalid Packet Size Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
+    do {
+		cout << "Packet Size (bytes): ";
+		cin >> packetSize;
+		if (packetSize < 1) {
+			cout << FORERED << "Invalid Packet Size Input Entered... please try again\n" << RESETTEXT;
+        }
+    } while (packetSize < 1);
+	
     //packetSize = packetSize * 1000;
     char sendbuffer[packetSize];
+	
     // Get protocol from user
-    cout << "Protocol (1=GBN 2=SR): ";
-    cin >> pMode;
-    if (pMode < 1 || pMode > 2) {
-        cout << FORERED << "Invalid Protocol Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
-    // Get timeout from user
-    cout << "Timeout (ms): ";
-    cin >> timeout;
-    if (timeout < 1) {
-        cout << FORERED << "Invalid Timeout Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
-    // Get size of sliding window from user
-    cout << "Size Of Sliding Window: ";
-    cin >> sWindowSize;
-    if (sWindowSize < 1) {
-        cout << FORERED << "Invalid Sliding Window Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
-    // Get sequence range from user
-    cout << "Sequence Range Low: ";
-    cin >> sRangeLow;
-    cout << "Sequence Range High: ";
-    cin >> sRangeHigh;
-    if (sRangeHigh < sRangeLow || sRangeLow < 0) {
-        cout << FORERED << "Invalid Range Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
-    // Get situational errors from user
-    cout << "Situational Errors (1=none, 2=random, 3=custom): ";
-    cin >> sErrors;
-    if (sErrors == 3) {
-        cout << "Please enter comma-separated packet numbers to drop, if none, enter nothing and press enter: ";
-        scanf("%1024s", dropPackets);
-
-        cout << "Please enter comma-separated acks to loose, if none, enter nothing and press enter: ";
-        scanf("%1024s", looseAcks);
-        bool validatedErrors = (strlen(dropPackets) != 0) || (strlen(looseAcks) != 0);
-        if (!validatedErrors) {
-            cout << FORERED << "Invalid Custom Errors Input Entered... please try again\n" << RESETTEXT;
-            return 0;
-        } else {
-            // Parse custom situational errors here
+    do {
+		cout << "Protocol (1=GBN 2=SR): ";
+		cin >> pMode;
+		if (pMode < 1 || pMode > 2) {
+			cout << FORERED << "Invalid Protocol Input Entered... please try again\n" << RESETTEXT;
         }
-    } else if (sErrors == 0 || sErrors > 3) {
-        cout << FORERED << "Invalid Situationel Errors Input Entered... please try again\n" << RESETTEXT;
-        return 0;
-    }
+    } while (pMode < 1 || pMode > 2);
+	
+    // Get timeout from user
+    do {
+		cout << "Timeout (ms): ";
+		cin >> timeout;
+		if (timeout < 1) {
+			cout << FORERED << "Invalid Timeout Input Entered... please try again\n" << RESETTEXT;
+        }
+    } while (timeout < 1);
+	
+    // Get size of sliding window from user
+	do {	
+		cout << "Size Of Sliding Window: ";
+		cin >> sWindowSize;
+		if (sWindowSize < 1) {
+			cout << FORERED << "Invalid Sliding Window Input Entered... please try again\n" << RESETTEXT;
+        }
+    } while (sWindowSize < 1);
+	
+    // Get sequence range from user
+	do {
+		cout << "Sequence Range Low: ";
+		cin >> sRangeLow;
+		cout << "Sequence Range High: ";
+		cin >> sRangeHigh;
+		if (sRangeHigh < sRangeLow || sRangeLow < 0) {
+			cout << FORERED << "Invalid Range Input Entered... please try again\n" << RESETTEXT;
+        }
+		if (((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize ) {
+			cout << FORERED << "Sequence Range must be equal to or greater than twice the Window Size\n" << RESETTEXT; 
+		}
+    } while (sRangeHigh < sRangeLow || sRangeLow < 0 || ((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize);
+	
+    // Get situational errors from user
+	do {
+		cout << "Situational Errors (1=none, 2=random, 3=custom): ";
+		cin >> sErrors;
+		if (sErrors == 3) {
+			cout << "Please enter comma-separated packet numbers to drop, if none, enter nothing and press enter: ";
+			scanf("%1024s", dropPackets);
+			cout << "Please enter comma-separated acks to loose, if none, enter nothing and press enter: ";
+			scanf("%1024s", looseAcks);
+			bool validatedErrors = (strlen(dropPackets) != 0) || (strlen(looseAcks) != 0);
+			if (!validatedErrors) {
+				cout << FORERED << "Invalid Custom Errors Input Entered... please try again\n" << RESETTEXT;
+				return 0;
+			} else {	
+			// Parse custom situational errors here
+			}
+		}
+		if (sErrors <= 0 || sErrors > 3) {
+			cout << FORERED << "Invalid Situationel Errors Input Entered... please try again\n" << RESETTEXT;
+        }
+    } while (sErrors <= 0 || sErrors > 3);
 
     // Set family, port, and ip for socket
     serv_addr.sin_family = AF_INET;
