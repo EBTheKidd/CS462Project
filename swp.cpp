@@ -64,8 +64,7 @@ typedef struct MSG {
     unsigned char *buffer;
 	
 	
-	void print()
-	{
+	void print() {
 		try {
 			cout << "  ========PACKET=======\n";
 			cout << "  |-source: " << src_port << "\n";
@@ -81,11 +80,14 @@ typedef struct MSG {
 			
 		}
 	}
+
+	
 }MSG;
 
-// Packet Serialize/Deserialize functions
+// Packet functions
 void serialize(MSG* msgPacket, char *data);
 void deserialize(char *data, MSG* msgPacket);
+void compute_crc16(unsigned char *buf);
 
 
 // Main function, parses arguments to determine server/client
@@ -294,6 +296,9 @@ int client(bool debug) {
                     newMsg->finalPacket = false;
                 }
 				
+				// Compute CRC16
+				compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer));
+				
                 // Print output
                 if (packetNum < 10 || debug == true) {
 					// Print "Sent Packet x" <- x = current packet number
@@ -462,6 +467,7 @@ int server(bool debug) {
                 case 1:
 				{
 					char data[packetSize];
+					char data2[packetSize];
                     if (((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0)) {
 						// Calculate amount of bytes to write to file
 						int writeBytes = b - sizeof(MSG);
@@ -469,6 +475,12 @@ int server(bool debug) {
 						// Deserialize packet
 						MSG* temp = new MSG;
 						deserialize(data, temp);
+						
+						// Compute CRC16 
+						MSG* temp2 = new MSG;
+						memcpy( data2, data, sizeof(data) );
+						deserialize(data2, temp2);
+						compute_crc16(temp2->buffer);
 						
 						// Determine if current packet is final packet
                         if (temp->finalPacket == true) {
@@ -605,4 +617,18 @@ void deserialize(char *data, MSG* msgPacket) {
     }
 	msgPacket->buffer = reinterpret_cast<unsigned char*>(malloc(sizeof(unsigned char) * packetSize));
 	memcpy( msgPacket->buffer, buf, sizeof(buf) );
+}
+
+// compute_crc16 function, used to quickly ensure packet integrity
+void compute_crc16(unsigned char *buf){
+	unsigned char x;
+	unsigned short crc = 0xFFFF;
+
+	int length = sizeof(buf);
+	while (length--){
+		x = crc >> 8 ^ *buf++;
+		x ^= x>>4;
+		crc = (crc << 8) ^ ((unsigned short)(x << 12)) ^ ((unsigned short)(x <<5)) ^ ((unsigned short)x);
+	}
+	cout << "Computed Checksum: " << crc << "\n";
 }
