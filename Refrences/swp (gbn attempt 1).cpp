@@ -16,7 +16,6 @@
 #include <sstream>
 #include <cstdlib>
 #include <cstring>
-#include <chrono>
 
 // Display stuff
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
@@ -59,19 +58,21 @@ typedef struct PACKET {
     int checksum;
 	bool finalPacket;
     unsigned char *buffer;
+	int size;
 	
 	
 	void print() {
 		try {
-			cout << "  |===PACKET===========\n";
-			cout << "  |-source:       " << src_port << "\n";
-			cout << "  |-dest:         " << dst_port << "\n";
-			cout << "  |-seq:          " << seq << "\n";
-			cout << "  |-window size:  " << window_size << "\n";
-			cout << "  |-checksum:     " << checksum << "\n";
-			//cout << "  |-buffer:     '" << buffer << "'\n";
-			cout << "  |-final:        " << finalPacket << "\n";
-			cout << "  |====================\n";
+			cout << "  ========PACKET=======\n";
+			cout << "  |-source: " << src_port << "\n";
+			cout << "  |-dest: " << dst_port << "\n";
+			cout << "  |-seq: " << seq << "\n";
+			cout << "  |-window size: " << window_size << "\n";
+			cout << "  |-checksum: " << checksum << "\n";
+			cout << "  |-buffer: '" << buffer << "'\n";
+			cout << "  |-size: '" << size << "'\n";
+			cout << "  |-final: " << finalPacket << "\n";
+			cout << "  =====================\n";
 		} catch (int i){
 			
 		}
@@ -81,7 +82,7 @@ typedef struct PACKET {
 }PACKET;
 
 // Packet functions
-void serialize(PACKET* msgPacket, char *data);
+void serialize(PACKET msgPacket, char *data);
 void deserialize(char *data, PACKET* msgPacket);
 int compute_crc16(unsigned char *buf);
 
@@ -124,7 +125,7 @@ int main(int argc, char * argv[]) {
 // Client function, send file to server
 int client(bool debug) {
     // Declare necessary variables/structures
-    int sfd = 0, n = 0, b, port, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
+    int sfd = 0, n = 0, b, port, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0;
     char ip[32], fileName[64], dropPackets[1024], looseAcks[1024];
     struct sockaddr_in serv_addr;
 
@@ -166,6 +167,7 @@ int client(bool debug) {
         return 2;
     }	
     int fileSize = fsize(fp);
+	cout << "File Size (calculated): " << fileSize << "\n";
 	
     // Get packet size from user
     do {
@@ -176,17 +178,17 @@ int client(bool debug) {
         }
     } while (packetSize < 1);
 	
-    //packetSize = packetSize * 1000;
+    //packetSize = packetSize * 1000;   <--- this will create kb for the number entered instead of bytes, which needs testing
     char sendbuffer[packetSize];
 	
     // Get protocol from user
     do {
-		cout << "Protocol (1=Stop And Wait, 2=Go-Back-N, 3=Selective Repeat): ";
+		cout << "Protocol (1=GBN 2=SR): ";
 		cin >> pMode;
-		if (pMode < 1 || pMode > 3) {
+		if (pMode < 1 || pMode > 2) {
 			cout << FORERED << "Invalid Protocol Input Entered... please try again\n" << RESETTEXT;
         }
-    } while (pMode < 1 || pMode > 3);
+    } while (pMode < 1 || pMode > 2);
 	
     // Get timeout from user
     do {
@@ -281,135 +283,108 @@ int client(bool debug) {
     write(sfd, & tmp7, sizeof(tmp7));
     cout << FOREGRN << "Settings Sent!\n" << RESETTEXT;
 
+	// amount of file to read, with accounting for size of struct
+	int fileReadSize = packetSize - sizeof(PACKET); 
+	int numberOfPacketsToSend = (int)(fileSize / fileReadSize);
+	
     // Set client variables
+    int mode = 1;
     bool run = true, transferFinished = false;
+	//PACKET* sendbase[numberOfPacketsToSend];
+	PACKET nextseqnum[numberOfPacketsToSend];
+	// Load packeets into struct
+	
+	int nextSeqCounter = 0; // nextseqnum counter
+	int sendBaseCounter = 0; // sendbase counter
+	
+	char readBuffer[fileReadSize];
+	while ((b = fread(readBuffer, 1, fileReadSize, fp)) > 0) {
+			char* buf[b];
+			for (int i = 0; i < b; i++){
+				buf[i] = reinterpret_cast<char*>(readBuffer[i]);
+			}
+			cout << "Current Text: " << buf << "\n\n\n";
+			// Build Packet for each chunk of file to store in nextseqnum
+			nextseqnum[nextSeqCounter].src_port = 1234;
+			nextseqnum[nextSeqCounter].dst_port = port;
+			nextseqnum[nextSeqCounter].seq = nextSeqCounter;
+			nextseqnum[nextSeqCounter].window_size = sWindowSize;
+			nextseqnum[nextSeqCounter].checksum = compute_crc16(reinterpret_cast<unsigned char*>(buf)); // compute crc16
+			
+			nextseqnum[nextSeqCounter].buffer = reinterpret_cast<unsigned char*>(buf); // cast char[] to packet buffer
+			if (b < fileReadSize) {
+				nextseqnum[nextSeqCounter].finalPacket = true;
+				transferFinished = true;
+			} else {
+				nextseqnum[nextSeqCounter].finalPacket = false;
+			}
+			nextseqnum[nextSeqCounter].size = b + sizeof(PACKET);
+			
+			//cout << "calculated size: " << nextseqnum[nextSeqCounter].size << "\n";
+			nextSeqCounter++;
+	}
+	
+	// copy nextseqnum to sendbase
+	//memcpy(&sendbase, &nextseqnum, sizeof(nextseqnum));
+	
+	//cout << "nextseqnum[0]->checksum = '" << nextseqnum[0]->checksum << "'\n";
+	//cout << "sendbase[0].checksum = '" << sendbase[0]->checksum << "'\n";
+	
+	nextSeqCounter = 0;
     // Loop until total bytes sent is equal to file size bytes
     cout << "\n[File Transfer]\n" << RESETTEXT;
-	auto transferStart = chrono::high_resolution_clock::now(); 
-	int originalPacketsSent = 0;
-	int retransmittedPacketsSent = 0;
-	int totalEllapsedTime = 0;
-	int totalThroughput = 0;
-	int effectiveThroughput = 0;
-	
-	
-	if (pMode == 1){
-		// Stop And Wait
-		while (run) {
-			// calc ammount of file to read
-			int fileReadSize = packetSize - sizeof(PACKET);
-			// memset sendbuffer to make sure its empty (might not be needed)
-			memset(sendbuffer, 0, fileReadSize);
-			// read/send file by desired packet size
-			if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
-				// Setup current frame's ack variables
-				int expectedAck;
-				
-				// Initialize char array for packet serialization
-				char data[sizeof(PACKET) + b];
-					
-				// Build Packet
-				PACKET* newMsg = new PACKET;
-				newMsg->src_port = 0;
-				newMsg->dst_port = port;
-				newMsg->seq = packetNum;
-				expectedAck = newMsg->seq; // set expected ackResponce from server
-				newMsg->window_size = sWindowSize;
-				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer)); // compute crc16
-				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer); // cast char[] to packet buffer
-				if (b < fileReadSize) {
-					newMsg->finalPacket = true;
-					transferFinished = true;
-				} else {
-					newMsg->finalPacket = false;
-				}
-				
-				// Serialize packet into char array
-				serialize(newMsg, data);
-				
-				// Send Packet
-				send(sfd, data, sizeof(data), 0);
-				originalPacketsSent++;
-				
-				// Print 'Sent Packet x' output (x = current seq num)
-				if (packetNum < 10 || debug == true) {
-					// Print "Sent Packet x" <- x = current packet number
-					cout << "Sent Packet #" << packetNum;
-					
-					// If in debug, print every packet size and packet contents
-					if (debug) {
-						// Print packet size (in bytes)
-						cout << "(" << sizeof(data) << " bytes)\n";
-						// Print packet data
-						newMsg->print();
-					} else {
-						cout << "\n";
-					}
-					
-					// If not in debug, print filler message after 10 packets
-					if (packetNum == 9 && debug == false) {
-						cout << "\nSending Remaining Packets...\n" << FORECYN;
-					}
-				}
-					
-				int s = 0, recievedAck;
-				bool ackRecieved = false;
-				auto start = chrono::high_resolution_clock::now(); 
-				// Loop until either timout is reached or ack is recieved
-				while (!ackRecieved) { 
-					
-					// calculate time ellapsed since timer was started
-					auto now = chrono::high_resolution_clock::now();
-					int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-				
-					// Check to see if ack has been recieved
-					if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
-						if (recievedAck == expectedAck) {
-							// Correct Packet Ack recieved, transfer success
-							cout << "  |-" << FOREGRN << "ACK RECIEVED" << RESETTEXT << "  (" << ms << " ms)\n";
-							ackRecieved = true;
-							cout << "  |====================\n";
-						} else {
-							// Incorrect Packet Ack recieved, transfer failed
-							cout << "  |-" << FORERED << "NAK RECIEVED" << RESETTEXT << "  (" << ms << " ms) (Resending Packet After Timeout)\n";
-						}
-					}
-					
-					// Check to see if timeout has been reached
-					if (timeout < ms && (transferFinished == false)){
-						cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
-						// Re-Send Packet, reset timeout timer, and increment retransmittedPacketsSent
-						send(sfd, data, sizeof(data), 0);
-						start = chrono::high_resolution_clock::now();
-						retransmittedPacketsSent++;
-					} else if (transferFinished){
-						cout << "  |-" << FOREGRN << "FINAL PACKET\n" << RESETTEXT ;
-						ackRecieved = true; // not really, but it infinitley hangs unless this is called
-						run = false;
-					}
-				}
-				
-				// Increase packet counter
-				packetNum++;
-			}
+    while (run) {
+		if (nextSeqCounter < (sendBaseCounter + sWindowSize)){
+			char data[nextseqnum[nextSeqCounter].size];
+			cout << "data size: " << sizeof(data) << "\n";
+			serialize(nextseqnum[nextSeqCounter], data);
+			send(sfd, data, sizeof(data), 0);
 			
+			// Print output
+			if (nextSeqCounter < 10 || debug == true) {
+				// Print "Sent Packet x" <- x = current packet number
+				cout << "Sent Packet #" << nextSeqCounter;
+							
+				// If in debug, print every packet size and packet contents
+				if (debug) {
+					// Print packet size (in bytes)
+					cout << "(" << sizeof(data) << " bytes)\n";
+					// Print packet data
+					nextseqnum[nextSeqCounter].print();
+				} else {
+					cout << "\n";
+				}
+							
+				// If not in debug, print filler message after 10 packets
+				if (nextSeqCounter == 9 && debug == false) {
+					cout << "\nSending Remaining Packets...\n" << FORECYN;
+				}
+			}
+			nextSeqCounter++;
 		}
-	} else if (pMode == 2){
-		// Go-Back-N
-	} else if (pMode == 3){
-		// Selective Repeat
-	}
-    
+		int recieveAck;
+		int s = 0;
+        while (false) { // Loop until packet code is recieved
+            if (s = recv(sfd, &recieveAck, sizeof(recieveAck), MSG_WAITALL) > 0) {
+				sendBaseCounter = recieveAck + 1;
+				if (sendBaseCounter == nextSeqCounter){
+					// stop timer
+					cout << "stop timer\n";
+				} else {
+					// start timer
+					cout << "start timer\n";
+				}
+			}
+        }
+		if (false) { // timeout
+			// start timer
+			cout << "stop timer timeout\n";
+		
+		}
+    }
     fclose(fp); // Close file
     if (transferFinished) {
-		auto transferEnd = chrono::high_resolution_clock::now();
-		totalEllapsedTime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
         cout << FOREGRN << "\nSend Success!\n" << RESETTEXT; // Print 'Send Success!'
-		cout << "Number of original packets sent: " << FORECYN << originalPacketsSent << RESETTEXT << "\n";
-		cout << "Number of retransmitted packets sent: " << FORECYN << retransmittedPacketsSent << RESETTEXT << "\n";
-		cout << "Total elapsed time (ms): " << FORECYN << totalEllapsedTime << RESETTEXT << "\n";
-		//cout << "Total throughput (Mbps): " << FORECYN << totalThroughput << RESETTEXT << "\n";
-		//cout << "Effective throughput: " << FORECYN << effectiveThroughput << RESETTEXT << "\n";
         md5(fileName); // Print md5
     } else {
         cout << FORERED << "\nSend Failed!\n" << RESETTEXT;
@@ -506,11 +481,9 @@ int server(bool debug) {
         // Print recieved information from client
         cout << FOREYEL << "\n[Settings Recieved From Client]\n";
         if (pMode == 1) {
-            cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Stop And Wait\n";
+            cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: GBN\n";
         } else if (pMode == 2) {
-            cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Go-Back-N\n";
-        } else if (pMode == 3) {
-            cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Selective Repeat\n";
+            cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: SR\n";
         }
         cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
         cout << "\n[File Transfer]\n";
@@ -518,33 +491,23 @@ int server(bool debug) {
         // Open new file for writing
         FILE * fp = fopen(fileName, "wb");
         if (fp != NULL) {
+            int mode = 1;
             bool run = true;
+			bool packetVerified = false;
 			bool transferFinished = false;
-			int ack;
+			int ackCounter = 0;
+			int nakCounter = 0;
 			
-			// set timeout for socket
-			int timeoutSeconds = (int)(timeout / 1000); // convert timeout (ms) to seconds with no remainder
-			int remainingTimeout = 0;
-			if (timeoutSeconds > 0){
-				remainingTimeout = timeout - (timeoutSeconds * 1000); // remainingTimeout = ms remaining after subtracting seconds from timeout
-			}	
-			struct timeval tv;
-			tv.tv_sec = timeoutSeconds;
-			tv.tv_usec = remainingTimeout * 1000;
-			if (setsockopt(confd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-				perror("Error");
-			}
-			
-			
-			int originalPacketsRecieved = 0;
-			int retransmittedPacketsRecieved = 0;
-			if (pMode == 1) {
-				int previousPacketSeq = -1;
-				// Stop And Wait
-				while (run){
+			int nextseqnum = 0;
+            // Loop until total recieved bytes equals desired file size (recieved from client)
+            while (run) {
+                switch (mode) {
+                case 1:
+				{
 					char data[packetSize];
 					char data2[packetSize];
                     if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {
+						packetVerified = false;
 						// Calculate amount of bytes to write to file
 						int writeBytes = b - sizeof(PACKET);
 						
@@ -561,15 +524,13 @@ int server(bool debug) {
 						// Determine if current packet is final packet
                         if (recievedPacket->finalPacket == true) {
                             transferFinished = true;
+							run = false;
                         }
 						
-						// Set ack responce
-						ack = recievedPacket->seq;
-						
                         // Print output
-                        if (recievedPacket->seq < 10 || debug == true) {
+                        if (packetNum < 10 || debug == true) {
 							// Print "Sent Packet x" <- x = current packet number
-                            cout << "Recieved Packet #" << recievedPacket->seq;
+                            cout << "Recieved Packet #" << packetNum;
 							
 							// If in debug, print every packet size and packet contents
                             if (debug) {
@@ -582,53 +543,82 @@ int server(bool debug) {
                             }
 							
 							// If not in debug, print filler message after 10 packets
-                            if (recievedPacket->seq == 9 && debug == false) {
+                            if (packetNum == 9 && debug == false) {
                                 cout << "\nRecieving Remaining Packets...\n" << FORECYN;
                             }
                         }
 						
-						
-						
 						// Validate checksum 
 						if (recievedPacket->checksum == crcNew){
-							cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
-							cout << "  |-Sending " << "ACK " << FOREGRN  << ack << "\n" << RESETTEXT;
-							cout << "  |====================\n";
-							send(confd, & ack, sizeof(ack), 0);
+							packetVerified = true;
+							cout << "  |-Checksum " << FORERED << "OK\n" << RESETTEXT;
 							
-							if (previousPacketSeq != ack){
-								originalPacketsRecieved++;
-								// Write packet buffer to file
-								fwrite(recievedPacket->buffer, 1, writeBytes, fp);
-								// update previousPacketSeq to current packet seq
-								previousPacketSeq = ack;
-								if (transferFinished){
-									run = false;
-								}
-							} else {
-								retransmittedPacketsRecieved++;
+							//GBN
+							if (recievedPacket->seq == nextseqnum){
+								// Send nextseqnum to client
+								uint32_t ack = htonl(nextseqnum);
+								write(confd, & ack, sizeof(ack));
+								nextseqnum++;
 							}
 						} else {
+							packetVerified = false;
 							cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
-							cout << "  |-Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
-							cout << "  =========================\n";
-							send(confd, & ack, sizeof(ack), 0);
+							
+							//GBN
+							if (recievedPacket->seq == nextseqnum){
+								// Send nextseqnum to client
+								uint32_t ack = htonl(nextseqnum);
+								write(confd, & ack, sizeof(ack));
+								nextseqnum++;
+							}
 						}
-                    } else {
-						perror("Timeout");
-					}
+						
+                        // Write packet buffer to file
+                        fwrite(recievedPacket->buffer, 1, writeBytes, fp);
+                        // Increase packet count
+                        packetNum++;
+                        // Switch to validation/protocol mode
+                        //mode = 2;
+                    }
+                    break;
 				}
-			} else if (pMode == 2) {
-				// Go-Back-N
-			} else if (pMode == 3) {
-				// Selective Repeat
-			}
+                case 2:
+				{
+					if (!transferFinished){
+						uint32_t ackResponce;
+						if (!packetVerified){
+							ackResponce = htonl(0);
+							cout << "  |-Sending " << FORERED << "NAK " << nakCounter << "\n" << RESETTEXT;
+							nakCounter++;
+						} else {
+							ackResponce = htonl(1);
+							cout << "  |-Sending " << FOREGRN << "ACK " << ackCounter << "\n" << RESETTEXT;
+							ackCounter++;
+						}
+						cout << "  =====================\n";
+						// Send ack/nak
+						write(confd, & ackResponce, sizeof(ackResponce));
+					} else {
+						run = false;
+					}
+									
+					// Handle Protocol modes here
+					if (pMode == 1) {
+                        // Place GBN server functionality here
+                    } else if (pMode == 2) {
+                        // Place SR server functionality here
+                    }
+						
+					mode = 1;
+                    break;
+				}
+                }
+
+            }
 
             fclose(fp); // Close file
             if (transferFinished) {
                 cout << FOREGRN << "\nRecieve Success!\n" << RESETTEXT; // Print 'Recieve Success!'
-				cout << "Number of original packets recieved: " << FORECYN << originalPacketsRecieved << RESETTEXT << "\n";
-				cout << "Number of retransmitted packets recieved: " << FORECYN << retransmittedPacketsRecieved << RESETTEXT << "\n";
                 md5(fileName); // Print md5
             } else {
                 cout << FORERED << "\nRecieve Failed!\n" << RESETTEXT;
@@ -663,23 +653,24 @@ int fsize(FILE * fp) {
 }
 
 // serialize function, used to convert packet struct into char array for sending over sockets
-void serialize(PACKET* msgPacket, char *data) {
+void serialize(PACKET msgPacket, char *data) {
 	// Ints
     int *q = (int*)data;    
-    *q = msgPacket->src_port;       q++;    
-    *q = msgPacket->dst_port;       q++;    
-    *q = msgPacket->seq;            q++; 
-    *q = msgPacket->window_size;    q++;
-    *q = msgPacket->checksum;       q++;
+    *q = msgPacket.src_port;       q++;    
+    *q = msgPacket.dst_port;       q++;    
+    *q = msgPacket.seq;            q++; 
+    *q = msgPacket.window_size;    q++;
+    *q = msgPacket.checksum;       q++;
+    *q = msgPacket.size;       	   q++;
 	// Bools
 	bool *b = (bool*)q;
-	*b = msgPacket->finalPacket;	b++;
+	*b = msgPacket.finalPacket;	b++;
 	// Chars
     char *p = (char*)b;
     int i = 0;
     while (i < packetSize)
     {
-        *p = msgPacket->buffer[i];
+        *p = msgPacket.buffer[i];
         p++;
         i++;
     }
@@ -694,6 +685,7 @@ void deserialize(char *data, PACKET* msgPacket) {
     msgPacket->seq = *q;             q++; 
     msgPacket->window_size = *q;     q++; 
     msgPacket->checksum = *q;        q++;
+    msgPacket->size = *q;            q++;
 	// Bools
 	bool *b = (bool*)q;
 	msgPacket->finalPacket = *b;     b++;
