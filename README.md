@@ -69,6 +69,15 @@
         - [ ] Client
             - [ ] Go-Back-N
             - [ ] Selective Repeat
+    - [ ] Acks Sent/Recieved
+        - [ ] Server
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
     - [ ] Damaged Packets (bad crc result)
         - [ ] Server
             - [x] Stop And Wait
