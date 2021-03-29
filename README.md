@@ -16,3 +16,70 @@
     - [ ] User-Specified
         - [ ] Drop Packets (ex: 2,4,5)
         - [ ] Loose Acks (ex: 11)
+- [ ] Implement Output
+    - [ ] Original Packets Sent
+        - [ ] Server
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Re-Transmitted Packets Sent
+        - [ ] Server
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Total ellapsed Time (ms)
+        - [ ] Server
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Total Throughput (mbps)
+        - [ ] Server
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Effective Throughput
+        - [ ] Server
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Packets in Current Window
+        - [ ] Server
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Damaged Packets (bad crc result)
+        - [ ] Server
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Client
+            - [x] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+    - [ ] Last Packet Seq# Recieved 
+        - [ ] Server
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
