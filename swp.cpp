@@ -131,7 +131,7 @@ int client(bool debug) {
     // Initialize socket
     sfd = socket(AF_INET, SOCK_STREAM, 0);
 
-      // Get server IP from user
+    // Get server IP from user
     do {
 		cout << FOREWHT << "IP Address: ";
 		scanf("%15s", ip);
@@ -283,10 +283,12 @@ int client(bool debug) {
 
     // Set client variables
     bool run = true, transferFinished = false;
-	auto transferStart = chrono::high_resolution_clock::now(); 
-	int originalPacketsSent = 0,retransmittedPacketsSent = 0,totalEllapsedTime = 0,totalThroughput = 0,effectiveThroughput = 0;
 	int fileReadSize = packetSize - sizeof(PACKET);
 	int framesToSend = (int) (fileSize/fileReadSize);
+	// Output variables
+	auto transferStart = chrono::high_resolution_clock::now(); 
+	int originalPacketsSent = 0,retransmittedPacketsSent = 0,totalThroughput = 0,effectiveThroughput = 0, totalBytesSent = 0, totalCorrectBytesSent = 0;
+
 	
     cout << "\n[File Transfer]\n" << RESETTEXT;
 	// Stop and wait
@@ -325,6 +327,7 @@ int client(bool debug) {
 				
 				// Send Packet
 				send(sfd, data, sizeof(data), 0);
+				totalBytesSent += sizeof(data);
 				originalPacketsSent++;
 				
 				// Print 'Sent Packet x' output (x = current seq num)
@@ -364,6 +367,7 @@ int client(bool debug) {
 							// Correct Packet Ack recieved, transfer success
 							cout << "  |-" << FOREGRN << "ACK RECIEVED" << RESETTEXT << "  (" << ms << " ms)\n";
 							ackRecieved = true;
+							totalCorrectBytesSent += sizeof(data);
 							cout << "  |====================\n";
 						} else {
 							// Incorrect Packet Ack recieved, transfer failed
@@ -378,6 +382,7 @@ int client(bool debug) {
 						send(sfd, data, sizeof(data), 0);
 						start = chrono::high_resolution_clock::now();
 						retransmittedPacketsSent++;
+						totalBytesSent += sizeof(data);
 					} else if (transferFinished){
 						cout << "  |-" << FOREGRN << "FINAL PACKET\n" << RESETTEXT ;
 						ackRecieved = true; // not really, but it infinitley hangs unless this is called
@@ -510,14 +515,18 @@ int client(bool debug) {
     
     fclose(fp); // Close file
     if (transferFinished) {
+		// Calculate End Data
 		auto transferEnd = chrono::high_resolution_clock::now();
-		totalEllapsedTime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
-        cout << FOREGRN << "\nSend Success!\n" << RESETTEXT; // Print 'Send Success!'
+		int totalEllapsedTime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
+		double totalThroughput = (totalBytesSent * 8) / (double)(ms / 1000);
+		double effectiveThroughput = (totalCorrectBytesSent * 8) / (double)(ms / 1000);
+		// Print End Data
+        cout << FOREGRN << "\nSession Successfully Terminated!\n" << RESETTEXT;
 		cout << "Number of original packets sent: " << FORECYN << originalPacketsSent << RESETTEXT << "\n";
 		cout << "Number of retransmitted packets sent: " << FORECYN << retransmittedPacketsSent << RESETTEXT << "\n";
 		cout << "Total elapsed time (ms): " << FORECYN << totalEllapsedTime << RESETTEXT << "\n";
-		//cout << "Total throughput (Mbps): " << FORECYN << totalThroughput << RESETTEXT << "\n";
-		//cout << "Effective throughput: " << FORECYN << effectiveThroughput << RESETTEXT << "\n";
+		cout << "Total throughput (Mbps): " << FORECYN << totalThroughput << RESETTEXT << "\n";
+		cout << "Effective throughput: " << FORECYN << effectiveThroughput << RESETTEXT << "\n";
         md5(fileName); // Print md5
     } else {
         cout << FORERED << "\nSend Failed!\n" << RESETTEXT;
@@ -629,8 +638,9 @@ int server(bool debug) {
             bool run = true;
 			bool transferFinished = false;
 			int ack;
+			int lastPacketSeq = 0;
 			
-			// set timeout for socket
+			// calculate/set timeout for socket
 			int timeoutSeconds = (int)(timeout / 1000); // convert timeout (ms) to seconds with no remainder
 			int remainingTimeout = 0;
 			if (timeoutSeconds > 0){
@@ -671,6 +681,7 @@ int server(bool debug) {
 						// Determine if current packet is final packet
                         if (recievedPacket->finalPacket == true) {
                             transferFinished = true;
+							lastPacketSeq = recievedPacket->seq;
                         }
 						
 						// Set ack responce
@@ -729,6 +740,7 @@ int server(bool debug) {
 					}
 				}
 			}
+			
 			// Go-Back-N
 			if (pMode == 2) {
 				transferFinished = true;
@@ -816,7 +828,8 @@ int server(bool debug) {
 
             fclose(fp); // Close file
             if (transferFinished) {
-                cout << FOREGRN << "\nRecieve Success!\n" << RESETTEXT; // Print 'Recieve Success!'
+				// Print End Data
+				cout << "Last packet seq# recieved: " << FORECYN << lastPacketSeq << RESETTEXT << "\n";
 				cout << "Number of original packets recieved: " << FORECYN << originalPacketsRecieved << RESETTEXT << "\n";
 				cout << "Number of retransmitted packets recieved: " << FORECYN << retransmittedPacketsRecieved << RESETTEXT << "\n";
                 md5(fileName); // Print md5
