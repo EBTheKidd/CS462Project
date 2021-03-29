@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <vector>
 
 // Display stuff
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
@@ -55,11 +56,10 @@ typedef struct PACKET {
     int src_port;
     int dst_port;
     int seq;
-    int window_size;
+	int ttl;
     int checksum;
 	bool finalPacket;
     unsigned char *buffer;
-	
 	
 	void print() {
 		try {
@@ -67,7 +67,7 @@ typedef struct PACKET {
 			cout << "  |-source:       " << src_port << "\n";
 			cout << "  |-dest:         " << dst_port << "\n";
 			cout << "  |-seq:          " << seq << "\n";
-			cout << "  |-window size:  " << window_size << "\n";
+			cout << "  |-ttl:  " << ttl << "\n";
 			cout << "  |-checksum:     " << checksum << "\n";
 			cout << "  |-buffer:     '" << buffer << "'\n";
 			cout << "  |-final:        " << finalPacket << "\n";
@@ -75,16 +75,14 @@ typedef struct PACKET {
 		} catch (int i){
 			
 		}
-	}
-
-	
+	}	
 }PACKET;
 
 // Packet functions
 void serialize(PACKET* msgPacket, char *data);
 void deserialize(char *data, PACKET* msgPacket);
 int compute_crc16(unsigned char *buf);
-
+void copy_packet( PACKET* packet1, PACKET* packet2 );
 
 // Main function, parses arguments to determine server/client
 int main(int argc, char * argv[]) {
@@ -310,7 +308,7 @@ int client(bool debug) {
 				newMsg->dst_port = port;
 				newMsg->seq = packetNum;
 				expectedAck = newMsg->seq; // set expected ackResponce from server
-				newMsg->window_size = sWindowSize;
+				newMsg->ttl = 5;
 				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(sendbuffer)); // compute crc16
 				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer); // cast char[] to packet buffer
 				if (b < fileReadSize) {
@@ -420,7 +418,6 @@ int client(bool debug) {
 				newMsg.src_port = 0;
 				newMsg.dst_port = port;
 				newMsg.seq = (seq_num % sRangeHigh);
-				newMsg.window_size = sWindowSize;
 				newMsg.buffer = reinterpret_cast<unsigned char*>(strdup(reinterpret_cast<const char*>(readBufferTrim)));
 				newMsg.checksum = compute_crc16(newMsg.buffer); // compute crc16 from buffer
 				frame f;
@@ -499,7 +496,6 @@ int client(bool debug) {
 				newMsg->dst_port = port;
 				newMsg->seq = packetNum;
 				//expectedAck = newMsg->seq; // set expected ackResponce from server
-				newMsg->window_size = sWindowSize;
 				newMsg->buffer = reinterpret_cast<unsigned char*>(strdup(reinterpret_cast<const char*>(readBufferTrim)));
 				newMsg->checksum = compute_crc16(newMsg->buffer); // compute crc16 from buffer
 				if (b < fileReadSize) {
@@ -817,7 +813,7 @@ int server(bool debug) {
 						PACKET* recievedPacket = new PACKET;
 						deserialize(data, recievedPacket);
 						// Validate checksum, write to file, send ack if next expected packet
-						if (recievedPacket->seq == next_seq_num) { 
+						if ( recievedPacket->seq == (next_seq_num % sRangeHigh) ) { 
 							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
 							PACKET* temp = new PACKET;
 							memcpy( data2, data, sizeof(data) );
@@ -969,7 +965,7 @@ void serialize(PACKET* msgPacket, char *data) {
     *q = msgPacket->src_port;       q++;    
     *q = msgPacket->dst_port;       q++;    
     *q = msgPacket->seq;            q++; 
-    *q = msgPacket->window_size;    q++;
+	*q = msgPacket->ttl;			q++;
     *q = msgPacket->checksum;       q++;
 	// Bools
 	bool *b = (bool*)q;
@@ -992,7 +988,7 @@ void deserialize(char *data, PACKET* msgPacket) {
     msgPacket->src_port = *q;        q++;    
     msgPacket->dst_port = *q;        q++;    
     msgPacket->seq = *q;             q++; 
-    msgPacket->window_size = *q;     q++; 
+	msgPacket->ttl = *q;			 q++;
     msgPacket->checksum = *q;        q++;
 	// Bools
 	bool *b = (bool*)q;
@@ -1023,4 +1019,13 @@ int compute_crc16(unsigned char *buf){
 		crc = (crc << 8) ^ ((unsigned short)(x << 12)) ^ ((unsigned short)(x <<5)) ^ ((unsigned short)x);
 	}
 	return (int) crc;
+}
+
+void copy_packet( PACKET* packet1, PACKET* packet2 ) {
+	packet2->src_port = packet1->src_port;
+	packet2->dst_port = packet1->dst_port;
+	packet2->seq = packet1->seq;
+	packet2->checksum = packet1->checksum;
+	packet2->finalPacket = packet1->finalPacket;
+	memcpy( packet2->buffer, packet1->buffer, sizeof(packet1->buffer) );
 }
