@@ -443,7 +443,7 @@ int client(bool debug) {
 		do { 
 			if ( next_seq_num < (head_seq_num + sWindowSize) && (head_seq_num + sWindowSize) < all_frames.size() ) {
 				char* data;						
-				//copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
+				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
 				// Serialize packet into char array
 				serialize(&sendingPacket, data);
 				// Send Packet
@@ -467,7 +467,7 @@ int client(bool debug) {
 				timer = 0;
 				for( int i = head_seq_num; i < next_seq_num; i++ ) {
 					char* data;						
-					//copy_packet( &all_frames[i].packet, &resendingPacket );
+					copy_packet( &all_frames[i].packet, &resendingPacket );
 					// Serialize packet into char array
 					serialize(&resendingPacket, data);
 					// Send Packet
