@@ -183,46 +183,46 @@ int client(bool debug) {
 		if (pMode < 1 || pMode > 3) {
 			cout << FORERED << "Invalid Protocol Input Entered... please try again\n" << RESETTEXT;
 			pMode = 0;
-        }
+        } else if  (pMode != 1){	
+			// Get size of sliding window from user
+			do {	
+				cout << "Size Of Sliding Window: ";
+				cin >> sWindowSize;
+				if (sWindowSize < 1) {
+					cout << FORERED << "Invalid Sliding Window Input Entered... please try again\n" << RESETTEXT;
+					sWindowSize = 0;
+				}
+			} while (sWindowSize < 1);
+			
+			// Get sequence range from user
+			do {
+				cout << "Sequence Range Low: ";
+				cin >> sRangeLow;
+				cout << "Sequence Range High: ";
+				cin >> sRangeHigh;
+				if (sRangeHigh < sRangeLow || sRangeLow < 0) {
+					cout << FORERED << "Invalid Range Input Entered... please try again\n" << RESETTEXT;
+					sRangeLow = 0;
+					sRangeHigh = 0;
+				}
+				if (((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize ) {
+					cout << FORERED << "Sequence Range must be equal to or greater than twice the Window Size\n" << RESETTEXT; 
+					sRangeLow = 0;
+					sRangeHigh = 0;
+				}
+			} while (sRangeHigh < sRangeLow || sRangeLow < 0 || ((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize);
+		}
     } while (pMode < 1 || pMode > 3);
 	
-    // Get timeout from user
-    do {
+	// Get timeout from user
+	do {
 		cout << "Timeout (ms): ";
 		cin >> timeout;
 		if (timeout < 1) {
 			cout << FORERED << "Invalid Timeout Input Entered... please try again\n" << RESETTEXT;
 			timeout = 0;
-        }
-    } while (timeout < 1);
-	
-    // Get size of sliding window from user
-	do {	
-		cout << "Size Of Sliding Window: ";
-		cin >> sWindowSize;
-		if (sWindowSize < 1) {
-			cout << FORERED << "Invalid Sliding Window Input Entered... please try again\n" << RESETTEXT;
-			sWindowSize = 0;
-        }
-    } while (sWindowSize < 1);
-	
-    // Get sequence range from user
-	do {
-		cout << "Sequence Range Low: ";
-		cin >> sRangeLow;
-		cout << "Sequence Range High: ";
-		cin >> sRangeHigh;
-		if (sRangeHigh < sRangeLow || sRangeLow < 0) {
-			cout << FORERED << "Invalid Range Input Entered... please try again\n" << RESETTEXT;
-			sRangeLow = 0;
-			sRangeHigh = 0;
-        }
-		if (((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize ) {
-			cout << FORERED << "Sequence Range must be equal to or greater than twice the Window Size\n" << RESETTEXT; 
-			sRangeLow = 0;
-			sRangeHigh = 0;
 		}
-    } while (sRangeHigh < sRangeLow || sRangeLow < 0 || ((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize);
+	} while (timeout < 1);
 	
     // Get situational errors from user
 	do {
@@ -334,7 +334,8 @@ int client(bool debug) {
 				
 				// Send Packet
 				send(sfd, data, sizeof(data), 0);
-				totalBytesSent += sizeof(data);
+				int sentBytes = sizeof(data);
+				totalBytesSent += sentBytes;
 				originalPacketsSent++;
 				
 				// Print 'Sent Packet x' output (x = current seq num)
@@ -372,25 +373,26 @@ int client(bool debug) {
 					if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
 						if (recievedAck == expectedAck) {
 							// Correct Packet Ack recieved, transfer success
-							cout << "  |-" << FOREGRN << "ACK RECIEVED" << RESETTEXT << "  (" << ms << " ms)\n";
+							cout << "  |-" << FOREGRN << "ACK RECIEVED" << RESETTEXT << "\n";
 							ackRecieved = true;
-							totalCorrectBytesSent += sizeof(data);
+							totalCorrectBytesSent += sentBytes;
 							cout << "  |====================\n";
 						} else {
 							// Incorrect Packet Ack recieved, transfer failed
-							cout << "  |-" << FORERED << "NAK RECIEVED" << RESETTEXT << "  (" << ms << " ms) (Resending Packet After Timeout)\n";
+							cout << "  |-" << FORERED << "NAK RECIEVED " << RESETTEXT << "(Resending Packet After Timeout)\n";
 						}
 					}
 					
 					// Check to see if timeout has been reached
 					if (timeout < ms && (transferFinished == false)){
-						cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
+						cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << "(Resending Packet)\n";
 						// Re-Send Packet, reset timeout timer, and increment retransmittedPacketsSent
 						send(sfd, data, sizeof(data), 0);
 						start = chrono::high_resolution_clock::now();
 						retransmittedPacketsSent++;
 						totalBytesSent += sizeof(data);
 					} else if (transferFinished){
+						totalCorrectBytesSent += sentBytes;
 						cout << "  |-" << FOREGRN << "FINAL PACKET\n" << RESETTEXT ;
 						ackRecieved = true; // not really, but it infinitley hangs unless this is called
 						run = false;
@@ -601,15 +603,15 @@ int client(bool debug) {
 		// Calculate End Data
 		auto transferEnd = chrono::high_resolution_clock::now();
 		int totalEllapsedTime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
-		double totalThroughput = (totalBytesSent * 8) / totalEllapsedTime;
-		double effectiveThroughput = (totalCorrectBytesSent * 8) / totalEllapsedTime;
+		double totalThroughput = ((double)((totalBytesSent * 8) / totalEllapsedTime)) / 1000;
+		double effectiveThroughput = ((double)((totalCorrectBytesSent * 8) / totalEllapsedTime)) / 1000;
 		// Print End Data
         cout << FOREGRN << "\nSession Successfully Terminated!\n" << RESETTEXT;
 		cout << "Number of original packets sent: " << FORECYN << originalPacketsSent << RESETTEXT << "\n";
 		cout << "Number of retransmitted packets sent: " << FORECYN << retransmittedPacketsSent << RESETTEXT << "\n";
 		cout << "Total elapsed time (ms): " << FORECYN << totalEllapsedTime << RESETTEXT << "\n";
-		cout << "Total throughput (Mbps): " << FORECYN << (int)(totalThroughput / 1000) << RESETTEXT << "\n";
-		cout << "Effective throughput: " << FORECYN << (int)(effectiveThroughput / 1000) << RESETTEXT << "\n";
+		cout << "Total throughput (Mbps): " << FORECYN << totalThroughput << RESETTEXT << "\n";
+		cout << "Effective throughput: " << FORECYN << effectiveThroughput << RESETTEXT << "\n";
         md5(fileName); // Print md5
     } else {
         cout << FOREGRN << "\nSession Terminated Unsuccessfully...\n" << RESETTEXT;
@@ -717,12 +719,14 @@ int server(bool debug) {
 			cout << FOREYEL << "\n[Settings Recieved From Client]\n";
 			if (pMode == 1) {
 				cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Stop And Wait\n";
+				cout << "Timeout (ms): " << timeout << "\n" << FOREWHT;
 			} else if (pMode == 2) {
 				cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Go-Back-N\n";
+				cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
 			} else if (pMode == 3) {
 				cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Selective Repeat\n";
+				cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
 			}
-			cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
 		}
         
 		// Declare new recieving buff[] to be length of packet size and allocate memory for new buffer
