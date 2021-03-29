@@ -6,13 +6,13 @@
 ![](demo.PNG)
 
 ## TODO
-[Done]        - Implement CRC Checksum
-[In Progress] - Implement 3 Required Protocols
-                  - [Dome] Stop And Wait
-                  - [In Progress] Go-back-N
-                  - [In Progress] Selective repeat
-[Not Started] - Implement Situational Errors
-                  - [Not Started] randomly generated
-                  - [Not Started] user-specified
-                                    - [Not Started] Drop Packets (ex: 2,4,5)
-                                    - [Not Started] Loose Acks (ex: 11)
+- [x] Implement CRC Checksum
+- [ ] Implement 3 Required Protocols
+* * [x] Stop And Wait
+* * [ ] Go-Back-N
+* * [ ] Selective Repeat
+- [ ] Implement Situational Errors
+* * [ ] Randomly Generated
+* * [ ] User-Specified
+* * * [ ] Drop Packets (ex: 2,4,5)
+* * * [ ] Loose Acks (ex: 11)
