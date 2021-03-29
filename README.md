@@ -6,89 +6,23 @@
 ![](demo.PNG)
 
 ## TODO
-- [x] Implement CRC Checksum
-- [ ] Implement 3 Required Protocols
+- [x] CRC Checksum
+- [ ] Required Protocols
     - [x] Stop And Wait
     - [ ] Go-Back-N
     - [ ] Selective Repeat
-- [ ] Implement Situational Errors
+- [ ] Situational Errors
     - [ ] Randomly Generated
     - [ ] User-Specified
         - [ ] Drop Packets (ex: 2,4,5)
         - [ ] Loose Acks (ex: 11)
-- [ ] Implement Output
-    - [ ] Original Packets Sent
-        - [ ] Server
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-    - [ ] Re-Transmitted Packets Sent
-        - [ ] Server
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-    - [ ] Total ellapsed Time (ms)
-        - [ ] Server
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
+- [ ] Output
+    - [x] Original Packets Sent
+    - [x] Re-Transmitted Packets Sent
+    - [x] Total ellapsed Time (ms)
     - [ ] Total Throughput (mbps)
-        - [ ] Server
-            - [ ] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [ ] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
     - [ ] Effective Throughput
-        - [ ] Server
-            - [ ] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [ ] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
     - [ ] Packets in Current Window
-        - [ ] Server
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-    - [ ] Acks Sent/Recieved
-        - [ ] Server
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-    - [ ] Damaged Packets (bad crc result)
-        - [ ] Server
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
-        - [ ] Client
-            - [x] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
+    - [x] Acks Sent/Recieved
+    - [x] Damaged Packets (bad crc result)
     - [ ] Last Packet Seq# Recieved 
-        - [ ] Server
-            - [ ] Stop And Wait
-            - [ ] Go-Back-N
-            - [ ] Selective Repeat
