@@ -20,9 +20,9 @@
     - [x] Original Packets Sent
     - [x] Re-Transmitted Packets Sent
     - [x] Total ellapsed Time (ms)
-    - [ ] Total Throughput (mbps)
-    - [ ] Effective Throughput
+    - [x] Total Throughput (mbps)
+    - [x] Effective Throughput
     - [ ] Packets in Current Window
     - [x] Acks Sent/Recieved
-    - [x] Damaged Packets (bad crc result)
+    - [x] Damaged Packets (bad crc result / failed ack)
     - [ ] Last Packet Seq# Recieved 
