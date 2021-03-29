@@ -8,11 +8,11 @@
 ## TODO
 - [x] Implement CRC Checksum
 - [ ] Implement 3 Required Protocols
-* * [x] Stop And Wait
-* * [ ] Go-Back-N
-* * [ ] Selective Repeat
+    - [x] Stop And Wait
+    - [ ] Go-Back-N
+    - [ ] Selective Repeat
 - [ ] Implement Situational Errors
-* * [ ] Randomly Generated
-* * [ ] User-Specified
-* * * [ ] Drop Packets (ex: 2,4,5)
-* * * [ ] Loose Acks (ex: 11)
+    - [ ] Randomly Generated
+    - [ ] User-Specified
+        - [ ] Drop Packets (ex: 2,4,5)
+        - [ ] Loose Acks (ex: 11)
