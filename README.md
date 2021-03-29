@@ -6,5 +6,13 @@
 ![](demo.PNG)
 
 ## TODO
-1. Implement CRC Checksum                                                                   [In Progress]
-2. Implement Go-Back-N & Selective Repeat protocol simulations                              [Not Started]
+[Done]        - Implement CRC Checksum
+[In Progress] - Implement 3 Required Protocols
+                  - [Dome] Stop And Wait
+                  - [In Progress] Go-back-N
+                  - [In Progress] Selective repeat
+[Not Started] - Implement Situational Errors
+                  - [Not Started] randomly generated
+                  - [Not Started] user-specified
+                                    - [Not Started] Drop Packets (ex: 2,4,5)
+                                    - [Not Started] Loose Acks (ex: 11)
