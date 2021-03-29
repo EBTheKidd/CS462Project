@@ -66,9 +66,9 @@ typedef struct PACKET {
 			cout << "  |-source:       " << src_port << "\n";
 			cout << "  |-dest:         " << dst_port << "\n";
 			cout << "  |-seq:          " << seq << "\n";
-			cout << "  |-ttl:  " << ttl << "\n";
+			cout << "  |-ttl:          " << ttl << "\n";
 			cout << "  |-checksum:     " << checksum << "\n";
-			cout << "  |-buffer:       '" << buffer << "'\n";
+			//cout << "  |-buffer:       '" << buffer << "'\n";
 			cout << "  |-final:        " << finalPacket << "\n";
 			cout << "  |====================\n";
 		} catch (int i){
@@ -608,8 +608,8 @@ int client(bool debug) {
 		cout << "Number of original packets sent: " << FORECYN << originalPacketsSent << RESETTEXT << "\n";
 		cout << "Number of retransmitted packets sent: " << FORECYN << retransmittedPacketsSent << RESETTEXT << "\n";
 		cout << "Total elapsed time (ms): " << FORECYN << totalEllapsedTime << RESETTEXT << "\n";
-		cout << "Total throughput (Mbps): " << FORECYN << (totalThroughput / 1000) << RESETTEXT << "\n";
-		cout << "Effective throughput: " << FORECYN << (effectiveThroughput / 1000) << RESETTEXT << "\n";
+		cout << "Total throughput (Mbps): " << FORECYN << (int)(totalThroughput / 1000) << RESETTEXT << "\n";
+		cout << "Effective throughput: " << FORECYN << (int)(effectiveThroughput / 1000) << RESETTEXT << "\n";
         md5(fileName); // Print md5
     } else {
         cout << FOREGRN << "\nSession Terminated Unsuccessfully...\n" << RESETTEXT;
