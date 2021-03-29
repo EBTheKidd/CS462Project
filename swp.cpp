@@ -394,7 +394,81 @@ int client(bool debug) {
 	
 	// Go-Back-N
 	if (pMode == 2){
-	
+		typedef struct frame {
+			PACKET packet;
+			bool ack = false;
+		} frame;
+		vector<frame> all_frames;
+		int seq_num = 0;
+		int head_seq_num = 0;
+		int next_seq_num = 0;
+		int ackFrames = 0;
+		int timer = 0;
+		int s = 0, recievedAck;
+		PACKET sendingPacket;
+		PACKET resendingPacket;
+		// Create vector of all frames of file
+		for (int i = 0; i < framesToSend; i++) {
+			char readBuffer[fileReadSize];
+			if (((b = fread(readBuffer, 1, fileReadSize, fp)) > 0)) {
+				char readBufferTrim[b];
+				for (int t = 0; t < b; t++) {
+					readBufferTrim[t] = readBuffer[t];
+				}
+				// Build Packet
+				PACKET newMsg;
+				newMsg.src_port = 0;
+				newMsg.dst_port = port;
+				newMsg.seq = (seq_num % sRangeHigh);
+				newMsg.window_size = sWindowSize;
+				newMsg.buffer = reinterpret_cast<unsigned char*>(strdup(reinterpret_cast<const char*>(readBufferTrim)));
+				newMsg.checksum = compute_crc16(newMsg.buffer); // compute crc16 from buffer
+				frame f;
+				f.packet = newMsg;
+				all_frames.push_back(f);
+			}
+			seq_num++;
+		}
+		do { 
+			if ( next_seq_num < (head_seq_num + sWindowSize) && (head_seq_num + sWindowSize) < all_frames.size() ) {
+				char* data;						
+				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
+				// Serialize packet into char array
+				serialize(&sendingPacket, data);
+				// Send Packet
+				send(sfd, data, sizeof(data), 0);
+				originalPacketsSent++;				
+				sendingPacket.print();
+				next_seq_num++;
+			}	
+			// Check to see if an ack has been recieved
+			if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
+				cout << "Recieved Ack " << recievedAck << "\n";
+				if (recievedAck == all_frames[head_seq_num].packet.seq) {
+					all_frames[head_seq_num].ack = true;
+					head_seq_num++;
+					ackFrames++;
+					cout << "Incrementing head index of window frame...\n";				
+				}
+			}
+			if ( timer == timeout ) {
+				cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
+				timer = 0;
+				for( int i = head_seq_num; i < next_seq_num; i++ ) {
+					char* data;						
+					copy_packet( &all_frames[i].packet, &resendingPacket );
+					// Serialize packet into char array
+					serialize(&resendingPacket, data);
+					// Send Packet
+					send(sfd, data, sizeof(data), 0);
+					retransmittedPacketsSent++;
+					all_frames[i].packet.print();
+					resendingPacket.print();
+				}					
+			}
+			timer++;
+		} while( ackFrames < framesToSend );
+		transferFinished = true;
 	} 
 	
 	// Selective Repeat
@@ -731,6 +805,45 @@ int server(bool debug) {
 			}
 			// Go-Back-N
 			if (pMode == 2) {
+				int fileReadSize = packetSize - sizeof(PACKET);
+				int framesToReceive = (int) (fileSize/fileReadSize);
+				int framesReceived = 0;
+				int next_seq_num = 0; //Next expected packet sequence number to be received
+				char data[packetSize];
+				char data2[packetSize];
+				do {	
+                    if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {						
+						// Deserialize packet
+						PACKET* recievedPacket = new PACKET;
+						deserialize(data, recievedPacket);
+						// Validate checksum, write to file, send ack if next expected packet
+						if (recievedPacket->seq == next_seq_num) { 
+							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
+							PACKET* temp = new PACKET;
+							memcpy( data2, data, sizeof(data) );
+							deserialize(data2, temp);
+							int crcNew = compute_crc16(temp->buffer);
+							if (recievedPacket->checksum == crcNew) {
+								ack = recievedPacket->seq;
+								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
+								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << "\n" << RESETTEXT;
+								cout << "  |====================\n";	
+								// Calculate amount of bytes to write to file
+								int writeBytes = b - sizeof(PACKET);
+								fwrite(recievedPacket->buffer, 1, writeBytes, fp);
+								send(confd, & ack, sizeof(ack), 0);
+								originalPacketsRecieved++;
+								framesReceived++;
+								next_seq_num++;
+							} else {
+								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
+								cout << "  |-Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
+								cout << "  =========================\n";
+								//send(confd, & ack, sizeof(ack), 0);
+							}
+						}
+					}
+				} while ( framesReceived < framesToReceive );
 				transferFinished = true;
 			} 
 			
@@ -807,10 +920,7 @@ int server(bool debug) {
 						run = false;
 					}
 				}
-				
-				
-				
-				
+			
 				transferFinished = true;
 			}
 
