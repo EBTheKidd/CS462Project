@@ -57,6 +57,7 @@ typedef struct PACKET {
     int seq;
 	int ttl;
     int checksum;
+    int buffSize;
 	bool finalPacket;
     unsigned char *buffer;
 	
@@ -68,7 +69,8 @@ typedef struct PACKET {
 			cout << "  |-seq:          " << seq << "\n";
 			cout << "  |-ttl:          " << ttl << "\n";
 			cout << "  |-checksum:     " << checksum << "\n";
-			//cout << "  |-buffer:       '" << buffer << "'\n";
+			cout << "  |-buffSize:     " << buffSize << "\n";
+			cout << "  |-buffer:       '" << buffer << "'\n";
 			cout << "  |-final:        " << finalPacket << "\n";
 			cout << "  |====================\n";
 		} catch (int i){
@@ -488,9 +490,8 @@ int client(bool debug) {
 	if (pMode == 3){ 
 		// Create struct to track frames with their ack
 		struct windowFrame {
-			PACKET* packet;
+			PACKET packet;
 			bool ack;
-			int buffSize;
 		};
 		// initialize frames[] array which will store file contents in memory
 		windowFrame frames[framesToSend];
@@ -506,23 +507,28 @@ int client(bool debug) {
 					readBufferTrim[t] = readBuffer[t];
 				}
 				// Build Packet
-				PACKET* newMsg = new PACKET;
-				newMsg->src_port = 0;
-				newMsg->dst_port = port;
-				newMsg->seq = packetNum;
-				//expectedAck = newMsg->seq; // set expected ackResponce from server
-				newMsg->buffer = reinterpret_cast<unsigned char*>(strdup(reinterpret_cast<const char*>(readBufferTrim)));
-				newMsg->checksum = compute_crc16(newMsg->buffer); // compute crc16 from buffer
+				PACKET newMsg;
+				newMsg.src_port = 0;
+				newMsg.dst_port = port;
+				newMsg.seq = packetNum;
+				newMsg.buffer = (unsigned char*)calloc(b, sizeof(char));
+				for (int i = 0; i < b; i++){
+					newMsg.buffer[i] = readBufferTrim[i];
+				}
+				newMsg.checksum = compute_crc16(reinterpret_cast<unsigned char*>(readBufferTrim)); // compute crc16 from buffer
+				newMsg.buffSize = b;
+				
+				// Determine if this is the final packet
 				if (b < fileReadSize) {
-					newMsg->finalPacket = true;
+					newMsg.finalPacket = true;
 					transferFinished = true;
 				} else {
-					newMsg->finalPacket = false;
+					newMsg.finalPacket = false;
 				}
+				
 				
 				frames[i].packet = newMsg;
 				frames[i].ack = false;
-				frames[i].buffSize = b;
 			}
 		}
 		
@@ -533,20 +539,23 @@ int client(bool debug) {
 					cout << "checking frame "<< f << "\n"; 
 					// Only send frames that not been ack'd 
 					if (frames[f].ack == false){
-						char data[sizeof(PACKET) + frames[f].buffSize];
-						
-						PACKET* currentPacket = frames[f].packet;
-						//currentPacket->buffer = reinterpret_cast<unsigned char*>(strdup(reinterpret_cast<const char*>(frames[f].packet->buffer)));
+						PACKET currentPacket;
+						cout << "copying packet...\n";
+						copy_packet(&frames[f].packet, &currentPacket);
+						cout << "creating data array for serialized packet...\n";
+						cout << "buffsize: " << currentPacket.buffSize << "\n";
+						char data[sizeof(PACKET) + currentPacket.buffSize];
 						
 						// Serialize packet into char array
-						serialize(currentPacket, data);
+						cout << "serializing...\n";
+						serialize(&currentPacket, data);
 						
 						// Send Packet
 						send(sfd, data, sizeof(data), 0);
 						originalPacketsSent++;
-						currentPacket->print();
+						currentPacket.print();
 					} else {
-						cout << "frame " << f << "recieved an ack... skipping\n";
+						cout << "frame " << f << " has recieved an ack... skipping\n";
 					}
 				}
 			}
@@ -562,7 +571,7 @@ int client(bool debug) {
 				// Check to see if an ack has been recieved
 				if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
 					cout << "Recieved Ack " << recievedAck << "\n";
-					if (recievedAck == frames[windowFrameIndex].packet->seq){
+					if (recievedAck == frames[windowFrameIndex].packet.seq){
 						frames[windowFrameIndex].ack = true;
 						lowFrameAckd = true;
 						windowFrameIndex++;
@@ -1013,22 +1022,33 @@ void serialize(PACKET* msgPacket, char *data) {
 	// Ints
     int *q = (int*)data;    
     *q = msgPacket->src_port;       q++;    
+	//cout << "src_port stored: " << *q << "\n";
     *q = msgPacket->dst_port;       q++;    
+	//cout << "dst_port stored: " << *q << "\n";
     *q = msgPacket->seq;            q++; 
+	//cout << "seq stored: " << *q << "\n";
 	*q = msgPacket->ttl;			q++;
+	//cout << "ttl stored: " << *q << "\n";
     *q = msgPacket->checksum;       q++;
+	//cout << "checksum stored: " << *q << "\n";
+    *q = msgPacket->buffSize;       q++;
+	//cout << "buffSize stored: " << *q << "\n";
 	// Bools
 	bool *b = (bool*)q;
 	*b = msgPacket->finalPacket;	b++;
+	//cout << "finalPacket stored: " << *b << "\n";
 	// Chars
+	//cout << "buffer stored: '";
     char *p = (char*)b;
     int i = 0;
     while (i < packetSize)
     {
         *p = msgPacket->buffer[i];
+		//cout << *p;
         p++;
         i++;
     }
+	//cout << "'\n";
 }
 
 // deserialize function, used to convert char array from socket into packet struct
@@ -1040,6 +1060,7 @@ void deserialize(char *data, PACKET* msgPacket) {
     msgPacket->seq = *q;             q++; 
 	msgPacket->ttl = *q;			 q++;
     msgPacket->checksum = *q;        q++;
+    msgPacket->buffSize = *q;        q++;
 	// Bools
 	bool *b = (bool*)q;
 	msgPacket->finalPacket = *b;     b++;
@@ -1076,6 +1097,14 @@ void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 	packet2->dst_port = packet1->dst_port;
 	packet2->seq = packet1->seq;
 	packet2->checksum = packet1->checksum;
+	packet2->buffSize = packet1->buffSize;
 	packet2->finalPacket = packet1->finalPacket;
-	memcpy( packet2->buffer, packet1->buffer, sizeof(packet1->buffer) );
+	
+	packet2->buffer = (unsigned char*)calloc(packet1->buffSize, sizeof(char));
+	for (int i = 0; i < packet1->buffSize; i++){
+		packet2->buffer[i] = packet1->buffer[i];
+	}
+	
+	
+	//memcpy( packet2->buffer, packet1->buffer, sizeof(packet1->buffer) );
 }
