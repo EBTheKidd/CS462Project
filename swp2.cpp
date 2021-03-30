@@ -500,9 +500,13 @@ int client(bool debug) {
 		// Create struct to track frames with their ack
 		struct windowFrame {
 			PACKET packet;
+<<<<<<< HEAD
+			bool ack;
+=======
 			int ack;
 			bool sent;
 			int size;
+>>>>>>> dd8a6ddcb391ba6c387eff47ac973572435ed5a3
 		};
 		// initialize frames[] array which will store file contents in memory
 		windowFrame frames[framesToSend];
@@ -544,14 +548,13 @@ int client(bool debug) {
 			}
 		}
 		
-		// Send frames in window until first frame is ack'd, then increment window
+		// Send frames in window size
 		while (run){
-			// Loop through frames
-			for (int f = 0; f <= framesToSend; f++){
-				// if current frame is within window
-				if (f >= windowFrameIndex && f <= (windowFrameIndex + (sWindowSize - 1))){
-					// If current frame is not ack'd, send the frame to the server
-					if (frames[f].sent == false && frames[f].packet.buffSize > 0){
+			for (int f = windowFrameIndex; f <= framesToSend; f++){
+				if (f < (f + sWindowSize)){
+					cout << "checking frame "<< f << "\n"; 
+					// Only send frames that not been ack'd 
+					if (frames[f].ack == false){
 						PACKET currentPacket;
 						copy_packet(&frames[f].packet, &currentPacket);
 						char data[sizeof(PACKET) + currentPacket.buffSize];
@@ -561,6 +564,12 @@ int client(bool debug) {
 						
 						// Send Packet
 						send(sfd, data, sizeof(data), 0);
+<<<<<<< HEAD
+						originalPacketsSent++;
+						currentPacket.print();
+					} else {
+						cout << "frame " << f << " has recieved an ack... skipping\n";
+=======
 						
 						// Set frame as sent & set packet size
 						frames[f].sent = true;
@@ -595,25 +604,29 @@ int client(bool debug) {
 						cout << "frame " << f << " recieved a negative ack...\n";
 						frames[f].sent = false;
 						retransmittedPacketsSent++;
+>>>>>>> dd8a6ddcb391ba6c387eff47ac973572435ed5a3
 					}
 				}
 			}
 			
-			// set variables for recieving acks
 			int s = 0, recievedAck;
 			auto start = chrono::high_resolution_clock::now();
-			
-			// Loop until current low window frame is ack'd
-			while (transferFinished == false){
+			while (!transferFinished){
 				// calculate time ellapsed since timer was started
 				auto now = chrono::high_resolution_clock::now();
 				int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 				
 				// Check to see if an ack has been recieved
 				if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
-					// Reset timeout timer, since ack was recieved
-					start = chrono::high_resolution_clock::now();
 					cout << "Recieved Ack " << recievedAck << "\n";
+<<<<<<< HEAD
+					frames[recievedAck].ack = true;
+					if (recievedAck == finalPacketSeq){
+						transferFinished = true;
+					}
+					if (recievedAck == windowFrameIndex){
+						windowFrameIndex++;
+=======
 					
 					// Handle ack responce
 					if (recievedAck < 0){
@@ -641,17 +654,24 @@ int client(bool debug) {
 							printWindow(windowFrameIndex, sWindowSize, framesToSend);
 							break;
 						}
+>>>>>>> dd8a6ddcb391ba6c387eff47ac973572435ed5a3
 					}
+					printWindow(windowFrameIndex, sWindowSize, framesToSend);
+					start = chrono::high_resolution_clock::now();
 				}
-				
-				// Check to see if timeout is reached
 				if (timeout < ms){
+					// Timeout
 					cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
 					start = chrono::high_resolution_clock::now();
-					break;
+					retransmittedPacketsSent++;
 				}
 			}
+			
+			transferFinished = true;
+			run = false;
 		}
+		
+		
 	}
     
 
@@ -971,25 +991,22 @@ int server(bool debug) {
 				// initialize window index (this will represent the low index in frames[])
 				int windowFrameIndex = 0;
 				int recievedPacketsInWindow = 0;
-				bool recievedFinalPacket = false;
 				while (run){
 					// recieve packets for window
 					char data[packetSize];
 					char data2[packetSize];
-					if (recievedPacketsInWindow < sWindowSize && recievedFinalPacket == false){
+					if (recievedPacketsInWindow < sWindowSize && recievedPacketsInWindow <= framesToRecieve ){
 						if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {
 							// Deserialize packet
 							PACKET recievedPacket;
 							deserialize(data, &recievedPacket);
-							
-							// Add packet to frames[]
 							frames[recievedPacket.seq].packet = recievedPacket;
 							recievedPacketsInWindow++;
 							
-							// Create copy of packet to calculate checksum
 							PACKET copyPacket;
 							copy_packet(&recievedPacket, &copyPacket);
 							int crcNew = compute_crc16(copyPacket.buffer);
+							
 							
 							// Print output
 							if (recievedPacket.seq < 10 || debug == true) {
@@ -1011,8 +1028,6 @@ int server(bool debug) {
 									cout << "\nRecieving Remaining Packets...\n" << FORECYN;
 								}
 							}
-							
-							// Set ack value for frame
 							if (recievedPacket.checksum == crcNew){
 								frames[recievedPacket.seq].ack = true;
 								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
@@ -1022,6 +1037,16 @@ int server(bool debug) {
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
 								retransmittedPacketsRecieved++;
 							}
+<<<<<<< HEAD
+						
+						} else {
+							perror("Timeout");
+							run = false;
+						}
+					} else {
+						for (int i = windowFrameIndex; i < (i + sWindowSize); i++){
+							if (frames[i].ack == true) {
+=======
 							
 							if (recievedPacket.finalPacket){
 								recievedFinalPacket = true;
@@ -1037,43 +1062,39 @@ int server(bool debug) {
 							// if frame is ack'd/validated
 							if (frames[i].ack == true){
 								// Grab packet info & send ACK
+>>>>>>> dd8a6ddcb391ba6c387eff47ac973572435ed5a3
 								PACKET currentPacket = frames[i].packet;
 								int ack = currentPacket.seq;
 								cout << "Sending " << "ACK " << FOREGRN  << currentPacket.seq << "\n" << RESETTEXT;
 								send(confd, & ack, sizeof(ack), 0);
 								
-								// Check if current packet is low index of window
+								// Check if current packet is next in sequence for file writing
 								if (currentPacket.seq == windowFrameIndex){
-									
-									// Write packet to file
 									cout << "Writing Packet " << FOREGRN << ack << "\n" << RESETTEXT;
 									fwrite(currentPacket.buffer, 1, currentPacket.buffSize, fp);
-									
-									// Increment windowFrameIndex
 									windowFrameIndex++;
-									recievedPacketsInWindow--;
-									
-									// Print current window
 									printWindow(windowFrameIndex, sWindowSize, framesToRecieve);
-									
-									// If packet is final packet, end transmission
 									if (currentPacket.finalPacket){
 										transferFinished = true;
 										run = false;
 									}
 									break;
-									
 								}
 								
 							} else if (frames[i].ack == false) {
-								// Grab packet info & send NACK
 								PACKET currentPacket = frames[i].packet;
 								int ack = currentPacket.seq * -1;
 								cout << "Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
+<<<<<<< HEAD
+=======
 								send(confd, & ack, sizeof(ack), 0);
 								
 								// Print current window
+>>>>>>> dd8a6ddcb391ba6c387eff47ac973572435ed5a3
 								printWindow(windowFrameIndex, sWindowSize, framesToRecieve);
+								frames[i].ack = false;
+								//send(confd, & ack, sizeof(ack), 0);
+								cout << "Frame " << i << " has already been ack'd\n";
 							}
 						}
 					
@@ -1130,23 +1151,33 @@ void serialize(PACKET* msgPacket, char *data) {
 	// Ints
     int *q = (int*)data;    
     *q = msgPacket->src_port;       q++;    
+	//cout << "src_port stored: " << *q << "\n";
     *q = msgPacket->dst_port;       q++;    
+	//cout << "dst_port stored: " << *q << "\n";
     *q = msgPacket->seq;            q++; 
+	//cout << "seq stored: " << *q << "\n";
 	*q = msgPacket->ttl;			q++;
+	//cout << "ttl stored: " << *q << "\n";
     *q = msgPacket->checksum;       q++;
+	//cout << "checksum stored: " << *q << "\n";
     *q = msgPacket->buffSize;       q++;
+	//cout << "buffSize stored: " << *q << "\n";
 	// Bools
 	bool *b = (bool*)q;
 	*b = msgPacket->finalPacket;	b++;
+	//cout << "finalPacket stored: " << *b << "\n";
 	// Chars
+	//cout << "buffer stored: '";
     char *p = (char*)b;
     int i = 0;
     while (i < packetSize)
     {
         *p = msgPacket->buffer[i];
+		//cout << *p;
         p++;
         i++;
     }
+	//cout << "'\n";
 }
 
 // deserialize function, used to convert char array from socket into packet struct
@@ -1204,6 +1235,9 @@ void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 	for (int i = 0; i < packet1->buffSize; i++){
 		packet2->buffer[i] = packet1->buffer[i];
 	}
+	
+	
+	//memcpy( packet2->buffer, packet1->buffer, sizeof(packet1->buffer) );
 }
 
 // Prints current sliding window
