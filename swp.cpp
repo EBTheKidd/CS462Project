@@ -296,7 +296,7 @@ int client(bool debug) {
 	
 	// Set output variables
 	auto transferStart = chrono::high_resolution_clock::now(); 
-	int originalPacketsSent = 0,retransmittedPacketsSent = 0,totalThroughput = 0,effectiveThroughput = 0, totalBytesSent = 0, totalCorrectBytesSent = 0;
+	int originalPacketsSent = 0,retransmittedPacketsSent = 0, totalBytesSent = 0, totalCorrectBytesSent = 0;
 
 	// Begin File Transfer
     cout << "\n[File Transfer]\n" << RESETTEXT;
@@ -492,8 +492,9 @@ int client(bool debug) {
 		// Create struct to track frames with their ack
 		struct windowFrame {
 			PACKET packet;
-			bool ack;
+			int ack;
 			bool sent;
+			int size;
 		};
 		// initialize frames[] array which will store file contents in memory
 		windowFrame frames[framesToSend];
@@ -531,7 +532,7 @@ int client(bool debug) {
 				
 				
 				frames[i].packet = newMsg;
-				frames[i].ack = false;
+				frames[i].ack = i;
 			}
 		}
 		
@@ -552,7 +553,14 @@ int client(bool debug) {
 						
 						// Send Packet
 						send(sfd, data, sizeof(data), 0);
+						
+						// Set frame as sent & set packet size
 						frames[f].sent = true;
+						frames[f].size = sizeof(data);
+						
+						// Increment output variables
+						totalBytesSent += frames[f].size;
+						originalPacketsSent++;
 						
 						// Print output
 						if (currentPacket.seq < 10 || debug == true) {
@@ -574,10 +582,11 @@ int client(bool debug) {
 								cout << "\nSending Remaining Packets...\n" << FORECYN;
 							}
 						}
-					} else if (frames[f].ack == true){
-						cout << "frame " << f << " has recieved an ack... skipping...\n";
-					} else if (frames[f].ack == false){
-						cout << "frame " << f << " has been sent but not ack'd... skipping\n";
+					} else if (frames[f].ack != frames[f].packet.seq){
+						// Handle packet that recieved negative ACK value (prepare for resend)
+						cout << "frame " << f << " recieved a negative ack...\n";
+						frames[f].sent = false;
+						retransmittedPacketsSent++;
 					}
 				}
 			}
@@ -598,18 +607,32 @@ int client(bool debug) {
 					start = chrono::high_resolution_clock::now();
 					cout << "Recieved Ack " << recievedAck << "\n";
 					
-					// set recieved ack's corresponding frame's ack value to true
-					frames[recievedAck].ack = true;
-					if (recievedAck == finalPacketSeq){
-						transferFinished = true;
-						run = false;
-					}
-					
-					// if recieved ack is the current low window frame index, increment windowFrameIndex
-					if (recievedAck == windowFrameIndex){
-						windowFrameIndex++;
-						printWindow(windowFrameIndex, sWindowSize, framesToSend);
-						break;
+					// Handle ack responce
+					if (recievedAck < 0){
+						// set frame ack responce to correspond with negative ack
+						int originalResponce = recievedAck;
+						recievedAck = recievedAck * -1;
+						frames[recievedAck].ack = originalResponce;
+						
+					} else {
+						// set frame ack responce
+						frames[recievedAck].ack = recievedAck;
+						
+						// Increment totalCorrectBytesSent for effective throughput
+						totalCorrectBytesSent += frames[recievedAck].size;
+						
+						// check if recieved ack is last ack in sequence
+						if (recievedAck == finalPacketSeq){
+							transferFinished = true;
+							run = false;
+						}
+						
+						// if recieved ack is the current low window frame index, increment windowFrameIndex
+						if (recievedAck == windowFrameIndex){
+							windowFrameIndex++;
+							printWindow(windowFrameIndex, sWindowSize, framesToSend);
+							break;
+						}
 					}
 				}
 				
@@ -636,7 +659,7 @@ int client(bool debug) {
 		double totalThroughput = ((double)((totalBytesSent * 8) / totalEllapsedTime)) / 1000;
 		double effectiveThroughput = ((double)((totalCorrectBytesSent * 8) / totalEllapsedTime)) / 1000;
 		// Print End Data
-        cout << FOREGRN << "\nSession Successfully Terminated!\n" << RESETTEXT;
+        cout << FOREGRN << "\nSession Successfully Terminated!\n\n" << RESETTEXT;
 		cout << "Number of original packets sent: " << FORECYN << originalPacketsSent << RESETTEXT << "\n";
 		cout << "Number of retransmitted packets sent: " << FORECYN << retransmittedPacketsSent << RESETTEXT << "\n";
 		cout << "Total elapsed time (ms): " << FORECYN << totalEllapsedTime << RESETTEXT << "\n";
@@ -981,18 +1004,20 @@ int server(bool debug) {
 							if (recievedPacket.checksum == crcNew){
 								frames[recievedPacket.seq].ack = true;
 								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
+								originalPacketsRecieved++;
 							} else {
 								frames[recievedPacket.seq].ack = false;
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
+								retransmittedPacketsRecieved++;
 							}
 							
 							if (recievedPacket.finalPacket){
 								recievedFinalPacket = true;
+								lastPacketSeq = recievedPacket.seq;
 							}
 						
 						} else {
 							perror("Timeout");
-							//run = false;
 						}
 					} else {
 						// Loop through frames in window
@@ -1027,12 +1052,13 @@ int server(bool debug) {
 									break;
 									
 								}
+								
 							} else if (frames[i].ack == false) {
 								// Grab packet info & send NACK
 								PACKET currentPacket = frames[i].packet;
-								int ack = currentPacket.seq;
+								int ack = currentPacket.seq * -1;
 								cout << "Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
-								//send(confd, & ack, sizeof(ack), 0);
+								send(confd, & ack, sizeof(ack), 0);
 								
 								// Print current window
 								printWindow(windowFrameIndex, sWindowSize, framesToRecieve);
@@ -1050,7 +1076,7 @@ int server(bool debug) {
 			
 			// Print End Data
             if (transferFinished) {
-				cout << "Last packet seq# recieved: " << FORECYN << lastPacketSeq << RESETTEXT << "\n";
+				cout << "\nLast packet seq# recieved: " << FORECYN << lastPacketSeq << RESETTEXT << "\n";
 				cout << "Number of original packets recieved: " << FORECYN << originalPacketsRecieved << RESETTEXT << "\n";
 				cout << "Number of retransmitted packets recieved: " << FORECYN << retransmittedPacketsRecieved << RESETTEXT << "\n";
 				// Print md5
@@ -1162,6 +1188,7 @@ int compute_crc16(unsigned char *buf){
 	return (int) crc;
 }
 
+// copy_packet function, copys packet1 to packet2
 void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 	packet2->src_port = packet1->src_port;
 	packet2->dst_port = packet1->dst_port;
@@ -1179,6 +1206,7 @@ void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 	//memcpy( packet2->buffer, packet1->buffer, sizeof(packet1->buffer) );
 }
 
+// printWindow function, print current window
 void printWindow(int index, int windowSize, int totalFrames){
 	int lowerWindow = index;
 	int upperWindow = index + windowSize;
