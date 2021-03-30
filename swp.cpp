@@ -77,7 +77,7 @@ typedef struct PACKET {
 			
 		}
 	}	
-}PACKET;
+} PACKET;
 
 // Packet functions
 void serialize(PACKET* msgPacket, char *data);
@@ -420,12 +420,12 @@ int client(bool debug) {
 		int head_seq_num = 0;
 		int next_seq_num = 0;
 		int ackFrames = 0;
-		int timer = 0;
+		int ms;
 		int s = 0, recievedAck;
 		PACKET sendingPacket;
 		PACKET resendingPacket;
 		// Create vector of all frames of file
-		for (int i = 0; i < framesToSend; i++) {
+		for (int i = 0; i <= framesToSend; i++) {
 			char readBuffer[fileReadSize];
 			if (((b = fread(readBuffer, 1, fileReadSize, fp)) > 0)) {
 				char readBufferTrim[b];
@@ -437,18 +437,24 @@ int client(bool debug) {
 				newMsg.src_port = 0;
 				newMsg.dst_port = port;
 				newMsg.seq = (seq_num % sRangeHigh);
-				newMsg.buffer = reinterpret_cast<unsigned char*>(strdup(reinterpret_cast<const char*>(readBufferTrim)));
+				newMsg.ttl = 5;
+				newMsg.buffer = (unsigned char*)calloc(b, sizeof(char));
+				for (int i = 0; i < b; i++){
+					newMsg.buffer[i] = readBufferTrim[i];
+				}
 				newMsg.checksum = compute_crc16(newMsg.buffer); // compute crc16 from buffer
+				newMsg.buffSize = b;
 				frame f;
 				f.packet = newMsg;
 				all_frames.push_back(f);
 			}
 			seq_num++;
 		}
+		auto start = chrono::high_resolution_clock::now();
 		do { 
-			if ( next_seq_num < (head_seq_num + sWindowSize) && (head_seq_num + sWindowSize) < all_frames.size() ) {
-				char* data;						
+			if ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num <= framesToSend && head_seq_num <= framesToSend ) {					
 				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
+				char data[sizeof(PACKET) + sendingPacket.buffSize];
 				// Serialize packet into char array
 				serialize(&sendingPacket, data);
 				// Send Packet
@@ -460,30 +466,32 @@ int client(bool debug) {
 			// Check to see if an ack has been recieved
 			if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
 				cout << "Recieved Ack " << recievedAck << "\n";
-				if (recievedAck == all_frames[head_seq_num].packet.seq) {
+				if (recievedAck == ( head_seq_num % sRangeHigh ) ) {
 					all_frames[head_seq_num].ack = true;
 					head_seq_num++;
 					ackFrames++;
-					cout << "Incrementing head index of window frame...\n";				
+					cout << "Incrementing head index of window frame...\n";	
+					printWindow(head_seq_num, sWindowSize, framesToSend);
 				}
 			}
-			if ( timer == timeout ) {
+			auto now = chrono::high_resolution_clock::now();
+			ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+			if ( timeout < ms) {
 				cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
-				timer = 0;
-				for( int i = head_seq_num; i < next_seq_num; i++ ) {
-					char* data;						
+				auto start = chrono::high_resolution_clock::now();
+				for( int i = head_seq_num; i < next_seq_num; i++ ) {				
 					copy_packet( &all_frames[i].packet, &resendingPacket );
+					char data[sizeof(PACKET) + resendingPacket.buffSize];
 					// Serialize packet into char array
 					serialize(&resendingPacket, data);
 					// Send Packet
 					send(sfd, data, sizeof(data), 0);
 					retransmittedPacketsSent++;
 					all_frames[i].packet.print();
-					resendingPacket.print();
+					resendingPacket.print();					
 				}					
 			}
-			timer++;
-		} while( ackFrames < framesToSend );
+		} while ( ackFrames < framesToSend );
 		transferFinished = true;
 	} 
 	
@@ -909,36 +917,40 @@ int server(bool debug) {
 				do {	
                     if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {						
 						// Deserialize packet
-						PACKET* recievedPacket = new PACKET;
-						deserialize(data, recievedPacket);
+						PACKET recievedPacket;
+						deserialize(data, &recievedPacket);
 						// Validate checksum, write to file, send ack if next expected packet
-						if ( recievedPacket->seq == (next_seq_num % sRangeHigh) ) { 
+						if ( recievedPacket.seq == (next_seq_num % sRangeHigh) ) { 
 							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
-							PACKET* temp = new PACKET;
+							PACKET temp;
 							memcpy( data2, data, sizeof(data) );
-							deserialize(data2, temp);
-							int crcNew = compute_crc16(temp->buffer);
-							if (recievedPacket->checksum == crcNew) {
-								ack = recievedPacket->seq;
+							deserialize(data2, &temp);
+							int crcNew = compute_crc16(temp.buffer);
+							if (recievedPacket.checksum == crcNew) {
+								ack = recievedPacket.seq;
 								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
 								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << "\n" << RESETTEXT;
-								cout << "  |====================\n";	
+								cout << "  |====================\n";
 								// Calculate amount of bytes to write to file
 								int writeBytes = b - sizeof(PACKET);
-								fwrite(recievedPacket->buffer, 1, writeBytes, fp);
-								send(confd, & ack, sizeof(ack), 0);
+								fwrite(recievedPacket.buffer, 1, writeBytes, fp);
+								send(confd, &ack, sizeof(ack), 0);
 								originalPacketsRecieved++;
 								framesReceived++;
 								next_seq_num++;
+								if ( next_seq_num <= framesToReceive ) {
+									cout << "Current Window [" << next_seq_num << "]\n";
+								}
 							} else {
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
 								cout << "  |-Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
 								cout << "  =========================\n";
+								cout << "Current Window [" << next_seq_num << "]\n";
 								//send(confd, & ack, sizeof(ack), 0);
 							}
 						}
 					}
-				} while ( framesReceived < framesToReceive );
+				} while ( framesReceived <= framesToReceive );
 				transferFinished = true;
 			} 
 			
@@ -1188,11 +1200,12 @@ int compute_crc16(unsigned char *buf){
 	return (int) crc;
 }
 
-// copy_packet function, copys packet1 to packet2
+// Copy contents of packet 1 to packet 2
 void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 	packet2->src_port = packet1->src_port;
 	packet2->dst_port = packet1->dst_port;
 	packet2->seq = packet1->seq;
+	packet2->ttl = packet1->ttl;
 	packet2->checksum = packet1->checksum;
 	packet2->buffSize = packet1->buffSize;
 	packet2->finalPacket = packet1->finalPacket;
@@ -1206,15 +1219,13 @@ void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 	//memcpy( packet2->buffer, packet1->buffer, sizeof(packet1->buffer) );
 }
 
-// printWindow function, print current window
+// Prints current sliding window
 void printWindow(int index, int windowSize, int totalFrames){
 	int lowerWindow = index;
 	int upperWindow = index + windowSize;
 	if (upperWindow > totalFrames){
 		upperWindow = totalFrames;
 	}
-	
-	
 	cout << "Current Window [";
 	for (int i = lowerWindow; i <= upperWindow; i++){
 		if (i != upperWindow){
