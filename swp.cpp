@@ -499,7 +499,7 @@ int client(bool debug) {
 		int windowFrameIndex = 0;
 		
 		// Load frames into memory
-		for (int i = 0; i < framesToSend; i++){
+		for (int i = 0; i <= framesToSend; i++){
 			char readBuffer[fileReadSize];
 			if (((b = fread(readBuffer, 1, fileReadSize, fp)) > 0)) {
 				char readBufferTrim[b];
@@ -534,7 +534,7 @@ int client(bool debug) {
 		
 		// Send frames in window size
 		while (run){
-			for (int f = windowFrameIndex; f < framesToSend; f++){
+			for (int f = windowFrameIndex; f <= framesToSend; f++){
 				if (f < (f + sWindowSize)){
 					cout << "checking frame "<< f << "\n"; 
 					// Only send frames that not been ack'd 
