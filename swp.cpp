@@ -472,6 +472,11 @@ int client(bool debug) {
 				}
 				newMsg.checksum = compute_crc16(newMsg.buffer); // compute crc16 from buffer
 				newMsg.buffSize = b;
+				if (i == framesToSend){
+					newMsg.finalPacket = true;
+				} else {
+					newMsg.finalPacket = false;
+				}
 				frame f;
 				f.packet = newMsg;
 				all_frames.push_back(f);
@@ -854,8 +859,10 @@ int server(bool debug) {
 			}
 			
 			// Set up variables for final output
-			int originalPacketsRecieved = 0;
-			int retransmittedPacketsRecieved = 0;
+			int originalPacketsRecieved = 0, retransmittedPacketsRecieved = 0;
+			int fileReadSize = packetSize - sizeof(PACKET);
+			int framesToReceive= (int) (fileSize/fileReadSize);
+			cout << "Frames to recieve: " << framesToReceive << "\n";
 			
 			// Stop and wait
 			if (pMode == 1) {
@@ -943,8 +950,6 @@ int server(bool debug) {
 			
 			// Go-Back-N
 			if (pMode == 2) {
-				int fileReadSize = packetSize - sizeof(PACKET);
-				int framesToReceive = (int) (fileSize/fileReadSize);
 				int framesReceived = 0;
 				int next_seq_num = 0; //Next expected packet sequence number to be received
 				char data[packetSize];
@@ -954,6 +959,28 @@ int server(bool debug) {
 						// Deserialize packet
 						PACKET recievedPacket;
 						deserialize(data, &recievedPacket);
+						
+						// Print output
+						if (recievedPacket.seq < 10 || debug == true) {
+							// Print "Sent Packet x" <- x = current packet number
+							cout << "Recieved Packet #" << recievedPacket.seq;
+							
+							// If in debug, print every packet size and packet contents
+							if (debug) {
+								// Write packet bytes size
+								cout << "(" << b << " bytes)\n";
+								// print packet data
+								recievedPacket.print();
+							} else {
+								cout << "\n";
+							}
+							
+							// If not in debug, print filler message after 10 packets
+							if (recievedPacket.seq == 9 && debug == false) {
+								cout << "\nRecieving Remaining Packets...\n" << FORECYN;
+							}
+						}
+						
 						// Validate checksum, write to file, send ack if next expected packet
 						if ( recievedPacket.seq == (next_seq_num % sRangeHigh) ) { 
 							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
@@ -991,16 +1018,13 @@ int server(bool debug) {
 			
 			// Selective Repeat
 			if (pMode == 3) {
-				int fileReadSize = packetSize - sizeof(PACKET);
-				int framesToRecieve= (int) (fileSize/fileReadSize);
-				cout << "Frames to recieve: " << framesToRecieve << "\n";
 				struct windowFrame {
 					PACKET packet;
 					bool ack;
 				};
 				// initialize frames[] array which will store file contents in memory
-				windowFrame frames[framesToRecieve];
-				for (int i = 0; i < framesToRecieve; i++){
+				windowFrame frames[framesToReceive];
+				for (int i = 0; i < framesToReceive; i++){
 					frames[i].ack = false;
 				}
 				// initialize window index (this will represent the low index in frames[])
@@ -1089,7 +1113,7 @@ int server(bool debug) {
 									recievedPacketsInWindow--;
 									
 									// Print current window
-									printWindow(windowFrameIndex, sWindowSize, framesToRecieve);
+									printWindow(windowFrameIndex, sWindowSize, framesToReceive);
 									
 									// If packet is final packet, end transmission
 									if (currentPacket.finalPacket){
@@ -1108,7 +1132,7 @@ int server(bool debug) {
 								send(confd, & ack, sizeof(ack), 0);
 								
 								// Print current window
-								printWindow(windowFrameIndex, sWindowSize, framesToRecieve);
+								printWindow(windowFrameIndex, sWindowSize, framesToReceive);
 							}
 						}
 					
