@@ -487,6 +487,7 @@ int client(bool debug) {
 				serialize(&sendingPacket, data);
 				// Send Packet
 				send(sfd, data, sizeof(data), 0);
+				totalBytesSent += sizeof(data);
 				originalPacketsSent++;				
 				sendingPacket.print();
 				next_seq_num++;
@@ -496,6 +497,7 @@ int client(bool debug) {
 				cout << "Recieved Ack " << recievedAck << "\n";
 				if (recievedAck == ( head_seq_num % sRangeHigh ) ) {
 					all_frames[head_seq_num].ack = true;
+					totalCorrectBytesSent += (all_frames[head_seq_num].packet.buffSize + sizeof(PACKET));
 					head_seq_num++;
 					ackFrames++;
 					cout << "Incrementing head index of window frame...\n";	
@@ -514,6 +516,7 @@ int client(bool debug) {
 					serialize(&resendingPacket, data);
 					// Send Packet
 					send(sfd, data, sizeof(data), 0);
+					totalBytesSent += sizeof(data);
 					retransmittedPacketsSent++;
 					all_frames[i].packet.print();
 					resendingPacket.print();					
