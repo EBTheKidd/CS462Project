@@ -8,14 +8,23 @@
 ## TODO
 - [x] CRC Checksum
 - [ ] Required Protocols
-    - [x] Stop And Wait
+    - [ ] Stop And Wait
     - [ ] Go-Back-N
     - [ ] Selective Repeat
 - [ ] Situational Errors
     - [ ] Randomly Generated
+        - [ ] Stop And Wait
+        - [ ] Go-Back-N
+        - [ ] Selective Repeat
     - [ ] User-Specified
         - [ ] Drop Packets (ex: 2,4,5)
-        - [ ] Loose Acks (ex: 11)
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
+        - [ ] Loose Acks (ex: 11)  
+            - [ ] Stop And Wait
+            - [ ] Go-Back-N
+            - [ ] Selective Repeat
 - [x] Output
     - [x] Original Packets Sent
     - [x] Re-Transmitted Packets Sent
