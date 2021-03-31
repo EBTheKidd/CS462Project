@@ -145,6 +145,10 @@ int client(bool debug) {
 		cout << "Port: ";
 		cin >> port;
 		if (port < 1) {
+			// clear cin 
+			cin.clear();
+			cin.ignore(numeric_limits<streamsize>::max(), '\n');
+			// print error and reset input value
 			cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
 			port = 0;
 		}
@@ -173,6 +177,10 @@ int client(bool debug) {
 		cout << "Packet Size (bytes): ";
 		cin >> packetSize;
 		if (packetSize < 1) {
+			// clear cin 
+			cin.clear();
+			cin.ignore(numeric_limits<streamsize>::max(), '\n');
+			// print error and reset input value
 			cout << FORERED << "Invalid Packet Size Input Entered... please try again\n" << RESETTEXT;
 			packetSize = 0;
         }
@@ -184,6 +192,10 @@ int client(bool debug) {
 		cout << "Protocol (1=Stop And Wait, 2=Go-Back-N, 3=Selective Repeat): ";
 		cin >> pMode;
 		if (pMode < 1 || pMode > 3) {
+			// clear cin 
+			cin.clear();
+			cin.ignore(numeric_limits<streamsize>::max(), '\n');
+			// print error and reset input value
 			cout << FORERED << "Invalid Protocol Input Entered... please try again\n" << RESETTEXT;
 			pMode = 0;
         } else if  (pMode != 1){	
@@ -191,12 +203,16 @@ int client(bool debug) {
 			do {	
 				cout << "Size Of Sliding Window: ";
 				cin >> sWindowSize;
-				if (sWindowSize < 1) {
+				if (sWindowSize < 2) {
+					// clear cin 
+					cin.clear();
+					cin.ignore(numeric_limits<streamsize>::max(), '\n');
+					// print error and reset input value
 					cout << FORERED << "Invalid Sliding Window Input Entered... please try again\n" << RESETTEXT;
 					sWindowSize = 0;
 				}
-			} while (sWindowSize < 1);
-			
+			} while (sWindowSize < 2);
+		
 			// Get sequence range from user
 			do {
 				cout << "Sequence Range Low: ";
@@ -204,11 +220,19 @@ int client(bool debug) {
 				cout << "Sequence Range High: ";
 				cin >> sRangeHigh;
 				if (sRangeHigh < sRangeLow || sRangeLow < 0) {
+					// clear cin 
+					cin.clear();
+					cin.ignore(numeric_limits<streamsize>::max(), '\n');
+					// print error and reset input value
 					cout << FORERED << "Invalid Range Input Entered... please try again\n" << RESETTEXT;
 					sRangeLow = 0;
 					sRangeHigh = 0;
 				}
 				if (((sRangeHigh - sRangeLow + 1) / 2 ) < sWindowSize ) {
+					// clear cin 
+					cin.clear();
+					cin.ignore(numeric_limits<streamsize>::max(), '\n');
+					// print error and reset input value
 					cout << FORERED << "Sequence Range must be equal to or greater than twice the Window Size\n" << RESETTEXT; 
 					sRangeLow = 0;
 					sRangeHigh = 0;
@@ -238,10 +262,14 @@ int client(bool debug) {
 			scanf("%1024s", looseAcks);
 			bool validatedErrors = (strlen(dropPackets) != 0) || (strlen(looseAcks) != 0);
 			if (!validatedErrors) {
+				// clear cin 
+				cin.clear();
+				cin.ignore(numeric_limits<streamsize>::max(), '\n');
+				// print error and reset input value
 				cout << FORERED << "Invalid Custom Errors Input Entered... please try again\n" << RESETTEXT;
 				return 0;
 			} else {	
-			// Parse custom situational errors here
+				// Parse custom situational errors here
 			}
 		}
 		if (sErrors <= 0 || sErrors > 3) {
@@ -701,6 +729,10 @@ int server(bool debug) {
 		cout << "Port: ";
 		cin >> port;
 		if (port < 1) {
+			// clear cin 
+			cin.clear();
+			cin.ignore(numeric_limits<streamsize>::max(), '\n');
+			// print error and reset input value
 			cout << FORERED << "Invalid Port Input Entered... please try again\n" << RESETTEXT;
 			port = 0;
 		}
