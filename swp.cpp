@@ -25,6 +25,8 @@
 #define FOREYEL "\x1B[33m"  // Yellow
 #define FORECYN "\x1B[36m"  // Cyan
 #define FOREWHT "\x1B[37m"  // White
+#define PBSTR "##################################################" // Progress bar filler
+#define PBWIDTH 35 // Progress bar width
 
 // PHONEIX SERVER IPs:
 // Phoneix0: 10.35.195.251
@@ -452,7 +454,9 @@ int client(bool debug) {
 		int s = 0, recievedAck;
 		PACKET sendingPacket;
 		PACKET resendingPacket;
+		
 		// Create vector of all frames of file
+		cout << FORECYN << "Loading Frames into memory...\n";
 		for (int i = 0; i <= framesToSend; i++) {
 			char readBuffer[fileReadSize];
 			if (((b = fread(readBuffer, 1, fileReadSize, fp)) > 0)) {
@@ -480,9 +484,19 @@ int client(bool debug) {
 				frame f;
 				f.packet = newMsg;
 				all_frames.push_back(f);
+				
+				// Print progress bar progress
+				double percentage = ((double) i / (double) framesToSend);
+                int val = (int)(percentage * 100);
+                int lpad = (int)(percentage * PBWIDTH);
+                int rpad = PBWIDTH - lpad;
+                printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
+                fflush(stdout);
 			}
 			seq_num++;
 		}
+		cout << RESETTEXT << "\n";
+		
 		auto start = chrono::high_resolution_clock::now();
 		do { 
 			if ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num <= framesToSend && head_seq_num <= framesToSend ) {					
@@ -550,6 +564,7 @@ int client(bool debug) {
 		int finalPacketSeq = 0;
 		
 		// Load frames into memory
+		cout << FORECYN << "Loading Frames into memory...\n";
 		for (int i = 0; i <= framesToSend; i++){
 			char readBuffer[fileReadSize];
 			if (((b = fread(readBuffer, 1, fileReadSize, fp)) > 0)) {
@@ -581,89 +596,108 @@ int client(bool debug) {
 				frames[i].packet = newMsg;
 				frames[i].ack = i;
 				frames[i].resend = false;
+				
+				// Print progress bar progress
+				double percentage = ((double) i / (double) framesToSend);
+                int val = (int)(percentage * 100);
+                int lpad = (int)(percentage * PBWIDTH);
+                int rpad = PBWIDTH - lpad;
+                printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
+                fflush(stdout);
 			}
 		}
+		cout << RESETTEXT << "\n";
 		
+		bool shouldSendPacket = true;
 		// Send frames in window until first frame is ack'd, then increment window
 		while (run){
 			int windowHigh = (windowLow + sWindowSize);
 			// Loop through frames
 			cout << FORECYN << "Loop through all frames, Window: ";
 			cout << "(low: " << windowLow << ", high: " << windowHigh << ")\n" << RESETTEXT;
-			for (int f = 0; f <= framesToSend; f++){
-				// if current frame is within window
-				if (f >= windowLow && f < windowHigh){
-					cout << FORECYN << "Frame " << f << " is in the current window\n" << RESETTEXT;
-					// If current frame is not ack'd, send the frame to the server
-					if (frames[f].sent == false && frames[f].packet.buffSize > 0){
-						cout << FORECYN << "Frame " << f << " needs to be sent\n" << RESETTEXT;
-						// Build packet to be sent
-						PACKET currentPacket;
-						copy_packet(&frames[f].packet, &currentPacket);
-						char data[sizeof(PACKET) + currentPacket.buffSize];
-						
-						// Serialize packet into char array
-						serialize(&currentPacket, data);
-						
-						// Send Packet
-						send(sfd, data, sizeof(data), 0);
-						
-						// Set frame as sent & set packet size
-						frames[f].sent = true;
-						frames[f].size = sizeof(data);
-						frames[f].lifeStart = chrono::high_resolution_clock::now();
-						
-						// Increment output variables
-						totalBytesSent += frames[f].size;
-						if (frames[f].resend == true){
-							retransmittedPacketsSent++;
-							cout << "Re-sending frame " << f << "\n";
-						} else {
-							originalPacketsSent++;
-							frames[f].timesSent = 1;
-						}
-						
-						// Print output
-						if (currentPacket.seq < 10 || debug == true) {
-							// Print "Sent Packet x" <- x = current packet number
-							cout << "Sent Packet #" << currentPacket.seq;
+			if (shouldSendPacket){
+				for (int f = 0; f <= framesToSend; f++){
+					// if current frame is within window
+					if (f >= windowLow && f < windowHigh){
+						cout << FORECYN << "Frame " << f << " is in the current window\n" << RESETTEXT;
+						// If current frame is not ack'd, send the frame to the server
+						if (frames[f].sent == false && frames[f].packet.buffSize > 0){
+							cout << FORECYN << "Frame " << f << " needs to be sent\n" << RESETTEXT;
+							// Build packet to be sent
+							PACKET currentPacket;
+							copy_packet(&frames[f].packet, &currentPacket);
+							char data[sizeof(PACKET) + currentPacket.buffSize];
 							
-							// If in debug, print every packet size and packet contents
-							if (debug) {
-								// Write packet bytes size
-								cout << "(" << sizeof(data) << " bytes)\n";
-								// print packet data
-								//currentPacket.print();
-							} else {
-								cout << "\n";
-							}
+							// Serialize packet into char array
+							serialize(&currentPacket, data);
 							
-							// If not in debug, print filler message after 10 packets
-							if (currentPacket.seq == 9 && debug == false) {
-								cout << "\nSending Remaining Packets...\n";
-							}
-						}
-					} else if (frames[f].ack != frames[f].packet.seq){
-						// Handle packet that recieved negative ACK value (prepare for resend)
-						cout << "Packet " << f << " recieved a negative ack...\n";
-						frames[f].sent = false;
-					} else if (frames[f].sent == true){
-						// Calculate time passed since packet was sent
-						auto now = chrono::high_resolution_clock::now();
-						int lifetime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - frames[f].lifeStart).count();
-						
-						// if life time of packet is greater than timeout, resend packet
-						if (lifetime > timeout){
-							frames[f].sent == false;
-							cout << "Packet " << f << " has timed out after " << lifetime << " ms...";
-							cout << "(sent: " << frames[f].sent << ") (timesSent: " << frames[f].timesSent << ")\n";
-							frames[f].timesSent += 1;
+							// Send Packet
+							send(sfd, data, sizeof(data), 0);
+							
+							// Set frame as sent & set packet size
+							frames[f].sent = true;
+							frames[f].size = sizeof(data);
 							frames[f].lifeStart = chrono::high_resolution_clock::now();
-							frames[f].resend = true;
+							
+							// Increment output variables
+							totalBytesSent += frames[f].size;
+							if (frames[f].resend == true){
+								retransmittedPacketsSent++;
+								cout << "Re-sending frame " << f << "\n";
+							} else {
+								originalPacketsSent++;
+								frames[f].timesSent = 1;
+							}
+							
+							// Print output
+							if (currentPacket.seq < 10 || debug == true) {
+								// Print "Sent Packet x" <- x = current packet number
+								cout << "Sent Packet #" << currentPacket.seq;
+								
+								// If in debug, print every packet size and packet contents
+								if (debug) {
+									// Write packet bytes size
+									cout << "(" << sizeof(data) << " bytes)\n";
+									// print packet data
+									//currentPacket.print();
+								} else {
+									cout << "\n";
+								}
+								
+								// If not in debug, print filler message after 10 packets
+								if (currentPacket.seq == 9 && debug == false) {
+									cout << "\nSending Remaining Packets...\n";
+								}
+							}
+							
+							// if packet being sent is last packet, set shouldSendPacket to false
+							if (currentPacket.finalPacket == true){
+								shouldSendPacket = false;
+							}
+						} else if (frames[f].ack != frames[f].packet.seq){
+							// Handle packet that recieved negative ACK value (prepare for resend)
+							cout << "Packet " << f << " recieved a negative ack...\n";
+							frames[f].sent = false;
+						} else if (frames[f].sent == true){
+							// Calculate time passed since packet was sent
+							auto now = chrono::high_resolution_clock::now();
+							int lifetime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - frames[f].lifeStart).count();
+							
+							// if life time of packet is greater than timeout, resend packet
+							if (lifetime > timeout){
+								frames[f].sent == false;
+								cout << "Packet " << f << " has timed out after " << lifetime << " ms...";
+								cout << "(sent: " << frames[f].sent << ") (timesSent: " << frames[f].timesSent << ")\n";
+								frames[f].timesSent += 1;
+								frames[f].lifeStart = chrono::high_resolution_clock::now();
+								frames[f].resend = true;
+							}
 						}
 					}
 				}
 			}
+			
+			
 			
 			// set variables for recieving acks
 			int s = 0, recievedAck;
@@ -715,7 +749,7 @@ int client(bool debug) {
 				int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(ackTimeNow - ackTimeStart).count();
 				
 				// after 50ms of no ack recieved, skip back to sending packets 
-				if (timeout < ms){
+				if (timeout < ms && shouldSendPacket == true){
 					cout << FORERED << "ACK WAIT TIMEOUT" << RESETTEXT << "\n";
 					ackTimeStart = chrono::high_resolution_clock::now();
 					break;
