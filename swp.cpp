@@ -317,12 +317,17 @@ int client(bool debug) {
 		uint32_t tmp7 = htonl(sRangeHigh);
 		write(sfd, & tmp7, sizeof(tmp7));
 		cout << FOREGRN << "Settings Sent!\n" << RESETTEXT;
+		// Send Situational Errors to server
+		uint32_t tmp8 = htonl(sErrors);
+		write(sfd, & tmp8, sizeof(tmp8));
+		cout << FOREGRN << "Settings Sent!\n" << RESETTEXT;
 	}
 
     // Set client variables
     bool run = true, transferFinished = false;
 	int fileReadSize = packetSize - sizeof(PACKET);
 	int framesToSend = (int) (fileSize/fileReadSize);
+	int finalPacketSeq = -1;
 	
 	// Set output variables
 	auto transferStart = chrono::high_resolution_clock::now(); 
@@ -357,7 +362,7 @@ int client(bool debug) {
 				newMsg->buffer = reinterpret_cast<unsigned char*>(sendbuffer); // cast char[] to packet buffer
 				if (b < fileReadSize) {
 					newMsg->finalPacket = true;
-					transferFinished = true;
+					finalPacketSeq = newMsg->seq;
 				} else {
 					newMsg->finalPacket = false;
 				}
@@ -409,25 +414,28 @@ int client(bool debug) {
 							cout << "  |-" << FOREGRN << "ACK RECIEVED" << RESETTEXT << "\n";
 							ackRecieved = true;
 							totalCorrectBytesSent += sentBytes;
+							if (recievedAck == finalPacketSeq){
+								transferFinished = true;
+								cout << "  |-" << FOREGRN << "FINAL PACKET\n" << RESETTEXT ;
+							}
 							cout << "  |====================\n";
 						} else {
 							// Incorrect Packet Ack recieved, transfer failed
-							cout << "  |-" << FORERED << "NAK RECIEVED " << RESETTEXT << "(Resending Packet After Timeout)\n";
+							cout << "  |-" << FORERED << "NAK RECIEVED " << RESETTEXT << " resending...";
+							// Send Packet
+							send(sfd, data, sizeof(data), 0);
+							int sentBytes = sizeof(data);
+							totalBytesSent += sentBytes;
+							retransmittedPacketsSent++;
+							cout << "sent.\n";
 						}
 					}
 					
 					// Check to see if timeout has been reached
 					if (timeout < ms && (transferFinished == false)){
-						cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << "(Resending Packet)\n";
-						// Re-Send Packet, reset timeout timer, and increment retransmittedPacketsSent
-						send(sfd, data, sizeof(data), 0);
-						start = chrono::high_resolution_clock::now();
-						retransmittedPacketsSent++;
-						totalBytesSent += sizeof(data);
+						cout << "  |-" << FORERED << "ACK WAIT TIMEOUT  " << RESETTEXT << "\n";
+						start = chrono::high_resolution_clock::now(); 
 					} else if (transferFinished){
-						totalCorrectBytesSent += sentBytes;
-						cout << "  |-" << FOREGRN << "FINAL PACKET\n" << RESETTEXT ;
-						ackRecieved = true; // not really, but it infinitley hangs unless this is called
 						run = false;
 					}
 				}
@@ -561,7 +569,6 @@ int client(bool debug) {
 		windowFrame frames[framesToSend];
 		// initialize window index (this will represent the low index in frames[])
 		int windowLow = 0;
-		int finalPacketSeq = 0;
 		
 		// Load frames into memory
 		cout << FORECYN << "Loading Frames into memory...\n";
@@ -886,17 +893,22 @@ int server(bool debug) {
 			read(confd, & tmp7, sizeof(tmp7));
 			sRangeHigh = ntohl(tmp7);
 			
+			// Get Situational Errors from client
+			uint32_t tmp8;
+			read(confd, & tmp8, sizeof(tmp8));
+			sErrors = ntohl(tmp8);
+			
 			// Print recieved information from client
 			cout << FOREYEL << "\n[Settings Recieved From Client]\n";
 			if (pMode == 1) {
 				cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Stop And Wait\n";
-				cout << "Timeout (ms): " << timeout << "\n" << FOREWHT;
+				cout << "Timeout (ms): " << timeout << " | Situational Errors (1=none, 2=random, 3=custom): " << sErrors<< "\n" << FOREWHT;
 			} else if (pMode == 2) {
 				cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Go-Back-N\n";
-				cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
+				cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "] " << " | Situational Errors (1=none, 2=random, 3=custom): " << sErrors<< "\n" << FOREWHT;
 			} else if (pMode == 3) {
 				cout << "Packet Size (bytes): " << packetSize << " | File Size: " << fileSize << " | Protocol: Selective Repeat\n";
-				cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "]\n" << FOREWHT;
+				cout << "Timeout (ms): " << timeout << " | Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "] " << " | Situational Errors (1=none, 2=random, 3=custom): " << sErrors<< "\n" << FOREWHT;
 			}
 		}
         
@@ -985,6 +997,16 @@ int server(bool debug) {
                             }
                         }
 						
+						if (sErrors == 2 && ack != 0){
+							// Random situational Errors
+							bool random = (rand() % 2) != 0;
+							if (random){
+								// manually fail checksum
+								crcNew++;
+							}
+						} else if (sErrors == 3){
+							// Custom situational Errors
+						}
 						
 						
 						// Validate checksum 
@@ -1007,13 +1029,14 @@ int server(bool debug) {
 								retransmittedPacketsRecieved++;
 							}
 						} else {
+							ack = ack * -1;
 							cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
 							cout << "  |-Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
 							cout << "  =========================\n";
 							send(confd, & ack, sizeof(ack), 0);
 						}
                     } else {
-						perror("Timeout");
+						//perror("Timeout");
 					}
 				}
 			}
