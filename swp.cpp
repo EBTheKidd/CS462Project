@@ -46,7 +46,7 @@ int server(bool debug);
 
 // Server/Client Variables
 bool debug = false, isServer = false, isClient = false;
-int packetSize = 512;
+int packetSize = 512, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0, sRandomProb = 0, fileSize = 0;
 
 // File info functions
 int md5(char * fileName);
@@ -126,8 +126,9 @@ int main(int argc, char * argv[]) {
 // Client function, send file to server
 int client(bool debug) {
     // Declare necessary variables/structures
-    int sfd = 0, n = 0, b, port, packetNum = 0, count = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0, sRandomProb = 0;;
-    char ip[32], fileName[64], dropPackets[1024], looseAcks[1024];
+    int sfd = 0, n = 0, b, port, packetNum = 0, count = 0, sDropPacketCount = 0;
+	int droppedPackets[1024];
+    char ip[32], fileName[64];
     struct sockaddr_in serv_addr;
 
     // Initialize socket
@@ -172,7 +173,7 @@ int client(bool debug) {
         perror("File");
         return 2;
     }	
-    int fileSize = fsize(fp);
+    fileSize = fsize(fp);
 	
     // Get packet size from user
     do {
@@ -273,21 +274,34 @@ int client(bool debug) {
 		}
 		
 		if (sErrors == 3) {
-			cout << "Please enter comma-separated packet numbers to drop, if none, enter nothing and press enter: ";
-			scanf("%1024s", dropPackets);
-			cout << "Please enter comma-separated acks to loose, if none, enter nothing and press enter: ";
-			scanf("%1024s", looseAcks);
-			bool validatedErrors = (strlen(dropPackets) != 0) || (strlen(looseAcks) != 0);
-			if (!validatedErrors) {
-				// clear cin 
-				cin.clear();
-				cin.ignore(numeric_limits<streamsize>::max(), '\n');
-				// print error and reset input value
-				cout << FORERED << "Invalid Custom Errors Input Entered... please try again\n" << RESETTEXT;
-				return 0;
-			} else {	
-				// Parse custom situational errors here
-			}
+			// Drop Packets
+			do {
+				// get number of packets to drop
+				cout << "Please desired number of packets to drop: ";
+				cin >> sDropPacketCount;
+				// check input for invalid values
+				if (sDropPacketCount <= 0 && sDropPacketCount >= fileSize) {
+					cout << FORERED << "Invalid Number Of Packets Entered... please try again\n" << RESETTEXT;
+					sDropPacketCount = 0;
+					cin.clear();
+					cin.ignore(numeric_limits<streamsize>::max(), '\n');
+				}
+				// Loop to get all desired packet numbers
+				for (int i = 0; i < sDropPacketCount; i++){
+					do {
+						// Get packet number
+						cout << "Enter packet number to drop: ";
+						cin >> droppedPackets[i];
+						// check input for invalid values
+						if (droppedPackets[i] <= 0 && droppedPackets[i] >= fileSize) {
+							cout << FORERED << "Invalid Packet Number Entered... please try again\n" << RESETTEXT;
+							droppedPackets[i] = 0;
+							cin.clear();
+							cin.ignore(numeric_limits<streamsize>::max(), '\n');
+						}
+					} while (droppedPackets[i] <= 0 && droppedPackets[i] >= fileSize);
+				}
+			} while (sDropPacketCount <= 0 && sDropPacketCount >= fileSize);
 		}
 		if (sErrors <= 0 || sErrors > 3) {
 			cout << FORERED << "Invalid Situationel Errors Input Entered... please try again\n" << RESETTEXT;
@@ -331,14 +345,6 @@ int client(bool debug) {
 		// Send Sequence Range High to server
 		uint32_t tmp7 = htonl(sRangeHigh);
 		write(sfd, & tmp7, sizeof(tmp7));
-		// Send Situational Errors to server
-		uint32_t tmp8 = htonl(sErrors);
-		write(sfd, & tmp8, sizeof(tmp8));
-		if (sErrors == 2) {
-			// Send Random Probability to server
-			uint32_t tmp9 = htonl(sRandomProb);
-			write(sfd, & tmp9, sizeof(tmp9));
-		}
 		
 		cout << FOREGRN << "Settings Sent!\n" << RESETTEXT;
 	}
@@ -415,8 +421,20 @@ int client(bool debug) {
 					}
 				} else if (sErrors == 3){
 					// Custom situational Errors
-					send(sfd, data, sizeof(data), 0);
+					bool shouldDropPacket = false;
+					for (int i = 0; i < sDropPacketCount; i++){
+						if(droppedPackets[i] == packetNum){
+							shouldDropPacket = true;
+						}
+					}
+					
+					if (shouldDropPacket){
+						cout << "Intentially Dropping Packet " << packetNum << "\n";
+					} else {
+						send(sfd, data, sizeof(data), 0);
+					}
 				}
+							
 				int sentBytes = sizeof(data);
 				totalBytesSent += sentBytes;
 				originalPacketsSent++;
@@ -849,9 +867,10 @@ int client(bool debug) {
 // Server function, recieve file from client
 int server(bool debug) {
     // Declare necessary variables
-    int fd = 0, confd = 0, b, num, port, packetNum = 0, count = 0,fileSize = 0, pMode = 0, timeout = 0, sWindowSize = 0, sRangeLow = 0, sRangeHigh = 0, sErrors = 0, sRandomProb = 0;
+    int fd = 0, confd = 0, b, num, port, packetNum = 0, count = 0, sDropAckCount = 0;
     struct sockaddr_in serv_addr;
     char fileName[64], ip[32];
+	int droppedAcks[1024];
 	
 	// Get server IP from user
     do {
@@ -884,6 +903,59 @@ int server(bool debug) {
 			cout << FORERED << "Invalid File Name Input Entered... please try again\n" << RESETTEXT;
         }
     } while (strlen(fileName) == 0);
+	
+	 // Get situational errors from user
+	do {
+		cout << "Situational Errors (1=none, 2=random, 3=custom): ";
+		cin >> sErrors;
+		if (sErrors == 2){
+			do {
+				cout << "Random Probability (%): ";
+				cin >> sRandomProb;
+				if (sRandomProb <= 1 && sRandomProb > 100) {
+					cout << FORERED << "Invalid Random Probability Input Entered... please try again\n" << RESETTEXT;
+					sRandomProb = 0;
+					cin.clear();
+					cin.ignore(numeric_limits<streamsize>::max(), '\n');
+				}
+			} while (sRandomProb <= 1 && sRandomProb > 100);
+		}
+		
+		if (sErrors == 3) {
+			// Drop Acks
+			do {
+				// get number of packets to drop
+				cout << "Please desired number of acks to drop: ";
+				cin >> sDropAckCount;
+				// check input for invalid values
+				if (sDropAckCount <= 0 && sDropAckCount >= fileSize) {
+					cout << FORERED << "Invalid Number Of Acks Entered... please try again\n" << RESETTEXT;
+					sDropAckCount = 0;
+					cin.clear();
+					cin.ignore(numeric_limits<streamsize>::max(), '\n');
+				}
+				// Loop to get all desired packet numbers
+				for (int i = 0; i < sDropAckCount; i++){
+					do {
+						// Get packet number
+						cout << "Enter ack number to drop: ";
+						cin >> droppedAcks[i];
+						// check input for invalid values
+						if (droppedAcks[i] <= 0 && droppedAcks[i] >= fileSize) {
+							cout << FORERED << "Invalid Ack Number Entered... please try again\n" << RESETTEXT;
+							droppedAcks[i] = 0;
+							cin.clear();
+							cin.ignore(numeric_limits<streamsize>::max(), '\n');
+						}
+					} while (droppedAcks[i] <= 0 && droppedAcks[i] >= fileSize);
+				}
+			} while (sDropAckCount <= 0 && sDropAckCount >= fileSize);
+		}
+		if (sErrors <= 0 || sErrors > 3) {
+			cout << FORERED << "Invalid Situational Errors Input Entered... please try again\n" << RESETTEXT;
+			sErrors = 0;
+        }
+    } while (sErrors <= 0 || sErrors > 3);
 	
     // Initialize socket
     fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -946,18 +1018,6 @@ int server(bool debug) {
 			read(confd, & tmp7, sizeof(tmp7));
 			sRangeHigh = ntohl(tmp7);
 			
-			// Get Situational Errors from client
-			uint32_t tmp8;
-			read(confd, & tmp8, sizeof(tmp8));
-			sErrors = ntohl(tmp8);
-			
-			if (sErrors == 2){
-				// Get Situational Errors from client
-				uint32_t tmp9;
-				read(confd, & tmp9, sizeof(tmp9));
-				sRandomProb = ntohl(tmp9);
-			}
-			
 			// Print recieved information from client
 			cout << FOREYEL << "\n[Settings Recieved From Client]\n";
 			if (pMode == 1) {
@@ -970,10 +1030,15 @@ int server(bool debug) {
 				cout << "| Sliding Window Size: " << sWindowSize << " | Sequence Range: [" << sRangeLow << "," << sRangeHigh << "] " << " |\n";
 			}
 			
+			// Print situational errors output
 			if (sErrors == 2){
 				cout << "| Situational Errors: Random | Probability: " << sRandomProb << "% |\n" << RESETTEXT;
 			} else if (sErrors == 3){
-				cout << "| Situational Errors: Custom |\n" << RESETTEXT;
+				cout << "| Situational Errors: Custom | Dropped Acks: ";
+				for (int i = 0; i < sDropAckCount; i++){
+					cout << droppedAcks[i] << " ";
+				}
+				cout << "|\n" << RESETTEXT;
 			}
 		}
         
@@ -1063,6 +1128,7 @@ int server(bool debug) {
 								}
 							}
 							
+							// Situational Errors
 							if (sErrors == 2 && ack != 0 && ack != framesToReceive){
 								// Random situational Errors
 								std::random_device rd;     // only used once to initialise (seed) engine
@@ -1079,8 +1145,20 @@ int server(bool debug) {
 								}
 							} else if (sErrors == 3){
 								// Custom situational Errors
+								bool shouldDropAck = false;
+								for (int i = 0; i < sDropAckCount; i++){
+									if(droppedAcks[i] == ack){
+										shouldDropAck = true;
+										droppedAcks[i] = (droppedAcks[i] * -1);
+									}
+								}
+								
+								if (shouldDropAck){
+									// manually fail checksum
+									crcNew++;
+									retransmittedPacketsRecieved++;
+								}
 							}
-							
 							
 							// Validate checksum 
 							if (recievedPacket->checksum == crcNew){
