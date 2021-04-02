@@ -357,7 +357,8 @@ int client(bool debug) {
 	
 	// Set output variables
 	auto transferStart = chrono::high_resolution_clock::now(); 
-	int originalPacketsSent = 0,retransmittedPacketsSent = 0, totalBytesSent = 0, totalCorrectBytesSent = 0;
+	int originalPacketsSent = 0,retransmittedPacketsSent = 0;
+	unsigned long long int totalBytesSent = 0, totalCorrectBytesSent = 0;
 
 	// Begin File Transfer
     cout << "\n[File Transfer]\n" << RESETTEXT;
@@ -400,10 +401,13 @@ int client(bool debug) {
 				
 				// Serialize packet into char array
 				serialize(newMsg, data);
+				int sentBytes = sizeof(data);
 				
 				// Send Packet
 				if (sErrors == 1){
 					send(sfd, data, sizeof(data), 0);
+					totalBytesSent += sentBytes;
+					originalPacketsSent++;
 				}
 				if (sErrors == 2){
 					// Random situational Errors
@@ -418,6 +422,8 @@ int client(bool debug) {
 						cout << "Intentially Dropping Packet " << packetNum << "\n";
 					} else {
 						send(sfd, data, sizeof(data), 0);
+						totalBytesSent += sentBytes;
+						originalPacketsSent++;
 					}
 				} else if (sErrors == 3){
 					// Custom situational Errors
@@ -432,12 +438,10 @@ int client(bool debug) {
 						cout << "Intentially Dropping Packet " << packetNum << "\n";
 					} else {
 						send(sfd, data, sizeof(data), 0);
+						totalBytesSent += sentBytes;
+						originalPacketsSent++;
 					}
 				}
-							
-				int sentBytes = sizeof(data);
-				totalBytesSent += sentBytes;
-				originalPacketsSent++;
 				
 				// Print 'Sent Packet x' output (x = current seq num)
 				if (packetNum < 10 || debug == true) {
@@ -483,7 +487,6 @@ int client(bool debug) {
 							cout << "  |-" << FORERED << "NAK " << recievedAck << " RECIEVED " << RESETTEXT << " resending...";
 							// Send Packet
 							send(sfd, data, sizeof(data), 0);
-							int sentBytes = sizeof(data);
 							totalBytesSent += sentBytes;
 							retransmittedPacketsSent++;
 							cout << "sent.\n";
@@ -501,7 +504,6 @@ int client(bool debug) {
 						cout << "  |-" << FORERED << "ACK timed out for packet "<< packetNum << RESETTEXT << ", resending...";
 						// Send Packet
 						send(sfd, data, sizeof(data), 0);
-						int sentBytes = sizeof(data);
 						totalBytesSent += sentBytes;
 						retransmittedPacketsSent++;
 						cout << "sent.\n";
@@ -848,15 +850,19 @@ int client(bool debug) {
 		// Calculate End Data
 		auto transferEnd = chrono::high_resolution_clock::now();
 		int totalEllapsedTime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
-		double totalThroughput = ((double)((totalBytesSent * 8) / totalEllapsedTime)) / 1000;
-		double effectiveThroughput = ((double)((totalCorrectBytesSent * 8) / totalEllapsedTime)) / 1000;
+		unsigned long long totalBitsSent = totalBytesSent * 8;
+		cout << "totalBitsSent: " << totalBitsSent << "\n";
+		unsigned long long totalCorrectBitsSent = totalCorrectBytesSent * 8;
+		cout << "totalCorrectBitsSent: " << totalCorrectBitsSent << "\n";
+		unsigned long long totalThroughput = totalBitsSent / totalEllapsedTime;
+		unsigned long long effectiveThroughput = totalCorrectBitsSent / totalEllapsedTime;
 		// Print End Data
         cout << FOREGRN << "\nSession Successfully Terminated!\n\n" << RESETTEXT;
 		cout << "Number of original packets sent: " << FORECYN << originalPacketsSent << RESETTEXT << "\n";
 		cout << "Number of retransmitted packets sent: " << FORECYN << retransmittedPacketsSent << RESETTEXT << "\n";
 		cout << "Total elapsed time (ms): " << FORECYN << totalEllapsedTime << RESETTEXT << "\n";
-		cout << "Total throughput (Mbps): " << FORECYN << totalThroughput << RESETTEXT << "\n";
-		cout << "Effective throughput: " << FORECYN << effectiveThroughput << RESETTEXT << "\n";
+		cout << "Total throughput (Mbps): " << FORECYN << ((double)totalThroughput / 1000) << RESETTEXT << "\n";
+		cout << "Effective throughput (Mbps): " << FORECYN << ((double)effectiveThroughput / 1000) << RESETTEXT << "\n";
         md5(fileName); // Print md5
     } else {
         cout << FOREGRN << "\nSession Terminated Unsuccessfully...\n" << RESETTEXT;
