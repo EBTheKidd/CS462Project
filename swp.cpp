@@ -851,9 +851,7 @@ int client(bool debug) {
 		auto transferEnd = chrono::high_resolution_clock::now();
 		int totalEllapsedTime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
 		unsigned long long totalBitsSent = totalBytesSent * 8;
-		cout << "totalBitsSent: " << totalBitsSent << "\n";
 		unsigned long long totalCorrectBitsSent = totalCorrectBytesSent * 8;
-		cout << "totalCorrectBitsSent: " << totalCorrectBitsSent << "\n";
 		unsigned long long totalThroughput = totalBitsSent / totalEllapsedTime;
 		unsigned long long effectiveThroughput = totalCorrectBitsSent / totalEllapsedTime;
 		// Print End Data
