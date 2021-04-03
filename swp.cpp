@@ -388,7 +388,7 @@ int client(bool debug) {
 				newMsg->dst_port = port;
 				newMsg->seq = packetNum;
 				expectedAck = newMsg->seq; // set expected ackResponce from server
-				newMsg->ttl = 5;
+				newMsg->ttl = 255;
 				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(readBufferTrim)); // compute crc16
 				newMsg->buffer = reinterpret_cast<unsigned char*>(readBufferTrim); // cast char[] to packet buffer
 				newMsg->buffSize = b; // cast char[] to packet buffer
