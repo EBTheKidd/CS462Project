@@ -417,8 +417,7 @@ int client(bool debug) {
 					send(sfd, data, sizeof(data), 0);
 					totalBytesSent += sentBytes;
 					originalPacketsSent++;
-				}
-				if (sErrors == 2){
+				} else if (sErrors == 2 && packetNum != 0 && packetNum != (framesToSend - 1)){
 					// Random situational Errors
 					std::random_device rd;     // only used once to initialise (seed) engine
 					std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
@@ -434,7 +433,7 @@ int client(bool debug) {
 						totalBytesSent += sentBytes;
 						originalPacketsSent++;
 					}
-				} else if (sErrors == 3){
+				} else if (sErrors == 3 && packetNum != 0 && packetNum != (framesToSend - 1)){
 					// Custom situational Errors
 					bool shouldDropPacket = false;
 					for (int i = 0; i < sDropPacketCount; i++){
@@ -483,7 +482,7 @@ int client(bool debug) {
 						if (recievedAck == expectedAck) {
 							// Correct Packet Ack recieved, transfer success
 							cout << "  |-" << FOREGRN << "ACK " << recievedAck << " recieved" << RESETTEXT;
-							cout << " (" << recievedAck << "/" << framesToSend << ")\n";
+							cout << " (" << recievedAck + 1 << "/" << framesToSend << ")\n";
 							ackRecieved = true;
 							totalCorrectBytesSent += sentBytes;
 							if (recievedAck == finalPacketSeq){
@@ -495,6 +494,7 @@ int client(bool debug) {
 							// Incorrect Packet Ack recieved, transfer failed
 							cout << "  |-" << FORERED << "NAK " << recievedAck << " RECIEVED " << RESETTEXT << " resending...";
 							// Send Packet
+							newMsg->ttl = newMsg->ttl - 1;
 							send(sfd, data, sizeof(data), 0);
 							totalBytesSent += sentBytes;
 							retransmittedPacketsSent++;
@@ -512,6 +512,7 @@ int client(bool debug) {
 					if (timeout < ms && transferFinished == false ){
 						cout << "  |-" << FORERED << "ACK timed out for packet "<< packetNum << RESETTEXT << ", resending...";
 						// Send Packet
+						newMsg->ttl = newMsg->ttl - 1;
 						send(sfd, data, sizeof(data), 0);
 						totalBytesSent += sentBytes;
 						retransmittedPacketsSent++;
@@ -520,6 +521,11 @@ int client(bool debug) {
 					} else if (transferFinished){
 						run = false;
 					}
+				}
+				
+				if (newMsg->ttl <= 0){
+					run = false;
+					break;
 				}
 				
 				// Increase packet counter
@@ -1042,14 +1048,15 @@ int server(bool debug) {
 			
 			// Print situational errors output
 			if (sErrors == 2){
-				cout << "| Situational Errors: Random | Probability: " << sRandomProb << "% |\n" << RESETTEXT;
+				cout << "| Situational Errors: Random | Probability: " << sRandomProb << "% |\n";
 			} else if (sErrors == 3){
 				cout << "| Situational Errors: Custom | Dropped Acks: ";
 				for (int i = 0; i < sDropAckCount; i++){
 					cout << droppedAcks[i] << " ";
 				}
-				cout << "|\n" << RESETTEXT;
+				cout << "|\n";
 			}
+			cout << RESETTEXT;
 		}
         
 		// Declare new recieving buff[] to be length of packet size and allocate memory for new buffer
@@ -1067,15 +1074,8 @@ int server(bool debug) {
 			int ack;
 			int lastPacketSeq = 0;
 			
-			// calculate/set timeout for socket
-			int timeoutSeconds = (int)(timeout / 1000); // convert timeout (ms) to seconds with no remainder
-			int remainingTimeout = 0;
-			if (timeoutSeconds > 0){
-				remainingTimeout = timeout - (timeoutSeconds * 1000); // remainingTimeout = ms remaining after subtracting seconds from timeout
-			}	
 			struct timeval tv;
-			tv.tv_sec = timeoutSeconds;
-			tv.tv_usec = remainingTimeout * 1000;
+			tv.tv_sec = 30;
 			if (setsockopt(confd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
 				perror("Error");
 			}
@@ -1142,7 +1142,7 @@ int server(bool debug) {
 							}
 							
 							// Situational Errors
-							if (sErrors == 2 && ack != 0 && ack != framesToReceive){
+							if (sErrors == 2 && ack != 0 && ack != (framesToReceive - 1)){
 								// Random situational Errors
 								std::random_device rd;     // only used once to initialise (seed) engine
 								std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
@@ -1156,7 +1156,7 @@ int server(bool debug) {
 									crcNew++;
 									retransmittedPacketsRecieved++;
 								}
-							} else if (sErrors == 3){
+							} else if (sErrors == 3 && ack != 0 && ack != (framesToReceive - 1)){
 								// Custom situational Errors
 								bool shouldDropAck = false;
 								for (int i = 0; i < sDropAckCount; i++){
@@ -1199,6 +1199,7 @@ int server(bool debug) {
 								cout << "  =========================\n";
 								send(confd, & ack, sizeof(ack), 0);
 							}
+							
 						} else {
 							cout << "weird packet recieved... (#" << recievedPacket->seq << "), skipping...\n";
 							for (int i = 0; i < sizeof(data); i++){
@@ -1208,6 +1209,9 @@ int server(bool debug) {
 						
 						
                     } else {
+						cout << "timeout reached";
+						run = false;
+						break;
 						//perror("Timeout");
 					}
 				}
