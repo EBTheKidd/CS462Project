@@ -18,6 +18,7 @@
 #include <chrono>
 #include <vector>
 #include <random>
+#include <math.h>
 
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
 #define FORERED "\x1B[31m"  // Red
@@ -351,8 +352,16 @@ int client(bool debug) {
 
     // Set client variables
     bool run = true, transferFinished = false;
-	int fileReadSize = packetSize - sizeof(PACKET);
-	int framesToSend = (int) (fileSize/fileReadSize);
+	int fileReadSize = packetSize - sizeof(PACKET);	
+	int framesToSend = (int) ( fileSize / fileReadSize );
+	if ( ( fileSize % fileReadSize ) > 0 ) {
+		framesToSend++;
+	}
+	cout << "File size: " << fileSize << "\n";
+	cout << "Packet size: " << packetSize << "\n";
+	cout << "Original Packet Struct Size: " << sizeof(PACKET) << "\n";
+	cout << "File read size: " << fileReadSize << "\n";
+	cout << "Frames to send: " << framesToSend << "\n";
 	int finalPacketSeq = -1;
 	
 	// Set output variables
@@ -530,7 +539,6 @@ int client(bool debug) {
 		int seq_num = 0;
 		int head_seq_num = 0;
 		int next_seq_num = 0;
-		int ackFrames = 0;
 		int ms;
 		int s = 0, recievedAck;
 		PACKET sendingPacket;
@@ -580,7 +588,7 @@ int client(bool debug) {
 		
 		auto start = chrono::high_resolution_clock::now();
 		do { 
-			if ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num <= framesToSend && head_seq_num <= framesToSend ) {					
+			if ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num < framesToSend && head_seq_num < framesToSend ) {					
 				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
 				char data[sizeof(PACKET) + sendingPacket.buffSize];
 				// Serialize packet into char array
@@ -599,14 +607,13 @@ int client(bool debug) {
 					all_frames[head_seq_num].ack = true;
 					totalCorrectBytesSent += (all_frames[head_seq_num].packet.buffSize + sizeof(PACKET));
 					head_seq_num++;
-					ackFrames++;
 					cout << "Incrementing head index of window frame...\n";	
 					printWindow(head_seq_num, sWindowSize, framesToSend);
 				}
 			}
 			auto now = chrono::high_resolution_clock::now();
 			ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-			if ( timeout < ms) {
+			if ( timeout < ms && head_seq_num < framesToSend ) {
 				cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
 				auto start = chrono::high_resolution_clock::now();
 				for( int i = head_seq_num; i < next_seq_num; i++ ) {				
@@ -618,11 +625,10 @@ int client(bool debug) {
 					send(sfd, data, sizeof(data), 0);
 					totalBytesSent += sizeof(data);
 					retransmittedPacketsSent++;
-					all_frames[i].packet.print();
 					resendingPacket.print();					
 				}					
 			}
-		} while ( ackFrames < framesToSend );
+		} while ( head_seq_num < framesToSend );
 		transferFinished = true;
 	} 
 	
@@ -1078,6 +1084,9 @@ int server(bool debug) {
 			int originalPacketsRecieved = 0, retransmittedPacketsRecieved = 0;
 			int fileReadSize = packetSize - sizeof(PACKET);
 			int framesToReceive= (int) (fileSize/fileReadSize);
+			if ( ( fileSize % fileReadSize ) > 0 ) {
+				framesToReceive++;
+			}
 			cout << "Frames to recieve: " << framesToReceive << "\n";
 			
 			// Stop and wait
@@ -1206,8 +1215,7 @@ int server(bool debug) {
 			
 			// Go-Back-N
 			if (pMode == 2) {
-				int framesReceived = 0;
-				int next_seq_num = 0; //Next expected packet sequence number to be received
+				int next_seq_num = 0; 
 				char data[packetSize];
 				char data2[packetSize];
 				do {	
@@ -1250,25 +1258,22 @@ int server(bool debug) {
 								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << "\n" << RESETTEXT;
 								cout << "  |====================\n";
 								// Calculate amount of bytes to write to file
-								int writeBytes = b - sizeof(PACKET);
+								int writeBytes = recievedPacket.buffSize;
 								fwrite(recievedPacket.buffer, 1, writeBytes, fp);
 								send(confd, &ack, sizeof(ack), 0);
 								originalPacketsRecieved++;
-								framesReceived++;
 								next_seq_num++;
-								if ( next_seq_num <= framesToReceive ) {
+								if ( next_seq_num < framesToReceive ) {
 									cout << "Current Window [" << next_seq_num << "]\n";
 								}
 							} else {
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
-								cout << "  |-Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
 								cout << "  =========================\n";
 								cout << "Current Window [" << next_seq_num << "]\n";
-								//send(confd, & ack, sizeof(ack), 0);
 							}
 						}
 					}
-				} while ( framesReceived <= framesToReceive );
+				} while ( next_seq_num < framesToReceive );
 				transferFinished = true;
 			} 
 			
