@@ -376,17 +376,16 @@ int client(bool debug) {
 	if (pMode == 1){
 		// Stop And Wait
 		while (run) {
-			
+			PACKET packetToResend;
 			// memset sendbuffer to make sure its empty (might not be needed)
 			memset(sendbuffer, 0, fileReadSize);
 			// read/send file by desired packet size
 			if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
+				
 				char readBufferTrim[b];
 				for (int t = 0; t < b; t++){
 					readBufferTrim[t] = sendbuffer[t];
 				}
-				// Setup current frame's ack variables
-				int expectedAck;
 				
 				// Initialize char array for packet serialization
 				char data[sizeof(PACKET) + b];
@@ -396,11 +395,10 @@ int client(bool debug) {
 				newMsg->src_port = 0;
 				newMsg->dst_port = port;
 				newMsg->seq = packetNum;
-				expectedAck = newMsg->seq; // set expected ackResponce from server
 				newMsg->ttl = 255;
-				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(readBufferTrim)); // compute crc16
-				newMsg->buffer = reinterpret_cast<unsigned char*>(readBufferTrim); // cast char[] to packet buffer
-				newMsg->buffSize = b; // cast char[] to packet buffer
+				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(readBufferTrim));
+				newMsg->buffer = reinterpret_cast<unsigned char*>(readBufferTrim); 
+				newMsg->buffSize = b;
 				if (b < fileReadSize) {
 					newMsg->finalPacket = true;
 					finalPacketSeq = newMsg->seq;
@@ -408,48 +406,42 @@ int client(bool debug) {
 					newMsg->finalPacket = false;
 				}
 				
+				// create backup packet in case it fails
+				copy_packet(newMsg, &packetToResend);
+				
+				// Situational Errors
+				bool damagePacket = false;
+				if (sErrors == 2 && packetNum != 0 && newMsg->finalPacket == false){
+					// Generate Random Number between 0 and 100
+					std::random_device rd;
+					std::mt19937 rng(rd());
+					std::uniform_int_distribution<int> uni(0,100);
+					auto random_integer = uni(rng);
+					
+					// Determine if random number means that we should trigger an error
+					damagePacket = sRandomProb > (int)random_integer;
+				} else if (sErrors == 3 && packetNum != 0 && newMsg->finalPacket == false){
+					// Check if current packet needs to be damaged/dropped
+					for (int i = 0; i < sDropPacketCount; i++){
+						if(droppedPackets[i] == packetNum){
+							damagePacket = true;
+							droppedPackets[i] = (droppedPackets[i] * -1);
+						}
+					}
+				}
+				if (damagePacket && sErrors != 1){
+					cout << "Intentially Damaging Packet " << packetNum << "\n";
+					newMsg->checksum += 1;
+				}
+				
 				// Serialize packet into char array
 				serialize(newMsg, data);
 				int sentBytes = sizeof(data);
 				
 				// Send Packet
-				if (sErrors == 1){
-					send(sfd, data, sizeof(data), 0);
-					totalBytesSent += sentBytes;
-					originalPacketsSent++;
-				} else if (sErrors == 2 && packetNum != 0 && packetNum != (framesToSend - 1)){
-					// Random situational Errors
-					std::random_device rd;     // only used once to initialise (seed) engine
-					std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
-					std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
-
-					auto random_integer = uni(rng);
-					
-					bool random = sRandomProb > (int)random_integer;
-					if (random){
-						cout << "Intentially Dropping Packet " << packetNum << "\n";
-					} else {
-						send(sfd, data, sizeof(data), 0);
-						totalBytesSent += sentBytes;
-						originalPacketsSent++;
-					}
-				} else if (sErrors == 3 && packetNum != 0 && packetNum != (framesToSend - 1)){
-					// Custom situational Errors
-					bool shouldDropPacket = false;
-					for (int i = 0; i < sDropPacketCount; i++){
-						if(droppedPackets[i] == packetNum){
-							shouldDropPacket = true;
-						}
-					}
-					
-					if (shouldDropPacket){
-						cout << "Intentially Dropping Packet " << packetNum << "\n";
-					} else {
-						send(sfd, data, sizeof(data), 0);
-						totalBytesSent += sentBytes;
-						originalPacketsSent++;
-					}
-				}
+				send(sfd, data, sizeof(data), 0);
+				totalBytesSent += sentBytes;
+				originalPacketsSent++;
 				
 				// Print 'Sent Packet x' output (x = current seq num)
 				if (packetNum < 10 || debug == true) {
@@ -479,7 +471,7 @@ int client(bool debug) {
 				while (!ackRecieved) { 
 					// Check to see if ack has been recieved
 					if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
-						if (recievedAck == expectedAck) {
+						if (recievedAck == packetNum) {
 							// Correct Packet Ack recieved, transfer success
 							cout << "  |-" << FOREGRN << "ACK " << recievedAck << " recieved" << RESETTEXT;
 							cout << " (" << recievedAck + 1 << "/" << framesToSend << ")\n";
@@ -490,19 +482,8 @@ int client(bool debug) {
 								cout << "  |-" << FOREGRN << "FINAL PACKET\n" << RESETTEXT ;
 							}
 							cout << "  |====================\n";
-						} else {
-							// Incorrect Packet Ack recieved, transfer failed
-							cout << "  |-" << FORERED << "NAK " << recievedAck << " RECIEVED " << RESETTEXT << " resending...";
-							// Send Packet
-							newMsg->ttl = newMsg->ttl - 1;
-							send(sfd, data, sizeof(data), 0);
-							totalBytesSent += sentBytes;
-							retransmittedPacketsSent++;
-							cout << "sent.\n";
-							start = chrono::high_resolution_clock::now(); 
-						}
+						} 
 					}
-					
 					
 					// calculate time ellapsed since timer was started
 					auto now = chrono::high_resolution_clock::now();
@@ -511,12 +492,17 @@ int client(bool debug) {
 					// Check to see if timeout has been reached
 					if (timeout < ms && transferFinished == false ){
 						cout << "  |-" << FORERED << "ACK timed out for packet "<< packetNum << RESETTEXT << ", resending...";
-						// Send Packet
-						newMsg->ttl = newMsg->ttl - 1;
-						send(sfd, data, sizeof(data), 0);
+						//cout << "  |-Buffer: '" << newMsg->buffer << "'\n";
+						//cout << "  |-Buffer: '" << packetToResend->buffer << "'\n";
+						char data2[sizeof(PACKET) + b];
+						serialize(&packetToResend, data2);
+						// Resend packet
+						send(sfd, data2, sizeof(data2), 0);
+						// increment output variables
 						totalBytesSent += sentBytes;
 						retransmittedPacketsSent++;
 						cout << "sent.\n";
+						// reset timeout timer
 						start = chrono::high_resolution_clock::now(); 
 					} else if (transferFinished){
 						run = false;
@@ -645,10 +631,8 @@ int client(bool debug) {
 			PACKET packet;
 			int ack;
 			bool sent;
-			bool resend;
 			int size;
 			std::chrono::_V2::system_clock::time_point lifeStart;
-			int timesSent;
 		};
 		// initialize frames[] array which will store file contents in memory
 		windowFrame frames[framesToSend];
@@ -675,6 +659,7 @@ int client(bool debug) {
 				}
 				newMsg.checksum = compute_crc16(reinterpret_cast<unsigned char*>(readBufferTrim)); // compute crc16 from buffer
 				newMsg.buffSize = b;
+				newMsg.ttl = 255;
 				
 				// Determine if this is the final packet
 				if (b < fileReadSize) {
@@ -687,10 +672,9 @@ int client(bool debug) {
 				
 				frames[i].packet = newMsg;
 				frames[i].ack = i;
-				frames[i].resend = false;
 				
 				// Print progress bar progress
-				double percentage = ((double) i / (double) framesToSend);
+				double percentage = ((double) i / (double) (framesToSend - 1));
                 int val = (int)(percentage * 100);
                 int lpad = (int)(percentage * PBWIDTH);
                 int rpad = PBWIDTH - lpad;
@@ -704,6 +688,9 @@ int client(bool debug) {
 		// Send frames in window until first frame is ack'd, then increment window
 		while (run){
 			int windowHigh = (windowLow + sWindowSize);
+			if (windowHigh > framesToSend){
+				windowHigh = framesToSend;
+			}
 			// Loop through frames
 			cout << FORECYN << "Loop through all frames, Window: ";
 			cout << "(low: " << windowLow << ", high: " << windowHigh << ")\n" << RESETTEXT;
@@ -711,10 +698,12 @@ int client(bool debug) {
 				for (int f = 0; f <= framesToSend; f++){
 					// if current frame is within window
 					if (f >= windowLow && f < windowHigh){
-						cout << FORECYN << "Frame " << f << " is in the current window\n" << RESETTEXT;
-						// If current frame is not ack'd, send the frame to the server
+						//cout << FORECYN << "Frame " << f << " is in the current window\n" << RESETTEXT;
+						
 						if (frames[f].sent == false && frames[f].packet.buffSize > 0){
+							// If current frame is not ack'd, send the frame to the server
 							cout << FORECYN << "Frame " << f << " needs to be sent\n" << RESETTEXT;
+							
 							// Build packet to be sent
 							PACKET currentPacket;
 							copy_packet(&frames[f].packet, &currentPacket);
@@ -723,22 +712,58 @@ int client(bool debug) {
 							// Serialize packet into char array
 							serialize(&currentPacket, data);
 							
-							// Send Packet
-							send(sfd, data, sizeof(data), 0);
-							
 							// Set frame as sent & set packet size
 							frames[f].sent = true;
 							frames[f].size = sizeof(data);
 							frames[f].lifeStart = chrono::high_resolution_clock::now();
 							
-							// Increment output variables
-							totalBytesSent += frames[f].size;
-							if (frames[f].resend == true){
+							// Send Packet
+							if (frames[f].packet.ttl < 255){
+								// If packet is being resent, do not use random/custom errors
+								send(sfd, data, sizeof(data), 0);
+								totalBytesSent += frames[f].size;
 								retransmittedPacketsSent++;
-								cout << "Re-sending frame " << f << "\n";
-							} else {
-								originalPacketsSent++;
-								frames[f].timesSent = 1;
+								cout << "Re-sending frame " << f << " (ttl: " << frames[f].packet.ttl << ")\n";
+							} else if (frames[f].packet.ttl == 255) {
+								// If packet is being sent for the first time, use random/custom errors if applicable
+
+								if (sErrors == 2 && packetNum != 0 && packetNum != (framesToSend - 1)){
+									// Random situational Errors
+									std::random_device rd;     // only used once to initialise (seed) engine
+									std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
+									std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
+
+									auto random_integer = uni(rng);
+									
+									bool random = sRandomProb > (int)random_integer;
+									if (random){
+										cout << "Intentially Dropping Packet " << packetNum << "\n";
+									} else {
+										send(sfd, data, sizeof(data), 0);
+										totalBytesSent += frames[f].size;
+										originalPacketsSent++;
+									}
+								} else if (sErrors == 3 && packetNum != 0 && packetNum != (framesToSend - 1)){
+									// Custom situational Errors
+									bool shouldDropPacket = false;
+									for (int i = 0; i < sDropPacketCount; i++){
+										if(droppedPackets[i] == packetNum){
+											shouldDropPacket = true;
+										}
+									}
+									
+									if (shouldDropPacket){
+										cout << "Intentially Dropping Packet " << packetNum << "\n";
+									} else {
+										send(sfd, data, sizeof(data), 0);
+										totalBytesSent += frames[f].size;
+										originalPacketsSent++;
+									}
+								} else {
+									send(sfd, data, sizeof(data), 0);
+									totalBytesSent += frames[f].size;
+									originalPacketsSent++;
+								}
 							}
 							
 							// Print output
@@ -770,6 +795,8 @@ int client(bool debug) {
 							// Handle packet that recieved negative ACK value (prepare for resend)
 							cout << "Packet " << f << " recieved a negative ack...\n";
 							frames[f].sent = false;
+							frames[f].packet.ttl = frames[f].packet.ttl - 1;
+							shouldSendPacket = true;
 						} else if (frames[f].sent == true){
 							// Calculate time passed since packet was sent
 							auto now = chrono::high_resolution_clock::now();
@@ -778,11 +805,9 @@ int client(bool debug) {
 							// if life time of packet is greater than timeout, resend packet
 							if (lifetime > timeout){
 								frames[f].sent == false;
-								cout << "Packet " << f << " has timed out after " << lifetime << " ms...";
-								cout << "(sent: " << frames[f].sent << ") (timesSent: " << frames[f].timesSent << ")\n";
-								frames[f].timesSent += 1;
-								frames[f].lifeStart = chrono::high_resolution_clock::now();
-								frames[f].resend = true;
+								cout << "Packet " << f << " has timed out after " << lifetime << " ms...\n";
+								frames[f].packet.ttl = frames[f].packet.ttl - 1;
+								shouldSendPacket = true;
 							}
 						}
 					}
@@ -808,9 +833,9 @@ int client(bool debug) {
 					// Handle nagative ack responce (failed checksum)
 					if (recievedAck < 0){
 						// set frame ack responce to correspond with negative ack
-						int originalResponce = recievedAck;
+						int originalAck = recievedAck;
 						recievedAck = recievedAck * -1;
-						frames[recievedAck].ack = originalResponce;
+						frames[recievedAck].ack = originalAck;
 						
 					} else {
 						// set frame ack responce
@@ -1092,6 +1117,7 @@ int server(bool debug) {
 			// Stop and wait
 			if (pMode == 1) {
 				int previousPacketSeq = -1;
+				int lastRecievedSeq = -1;
 				// Stop And Wait
 				while (run){
 					char data[packetSize];
@@ -1104,7 +1130,7 @@ int server(bool debug) {
 						// Calculate amount of bytes to write to file
 						int writeBytes = recievedPacket->buffSize;
 						
-						if (recievedPacket->seq >= 0 && recievedPacket->seq <= framesToReceive && b > recievedPacket->buffSize){
+						if (recievedPacket->seq >= 0 && recievedPacket->seq < framesToReceive && b > recievedPacket->buffSize){
 							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
 							PACKET* temp = new PACKET;
 							memcpy( data2, data, sizeof(data) );
@@ -1125,64 +1151,73 @@ int server(bool debug) {
 								// Print "Sent Packet x" <- x = current packet number
 								cout << "Recieved Packet #" << recievedPacket->seq;
 								
-								// If in debug, print every packet size and packet contents
-								if (debug) {
-									// Write packet bytes size
-									cout << "(" << writeBytes + sizeof(PACKET) << " bytes)\n";
-									// print packet data
-									recievedPacket->print();
+								if (lastRecievedSeq == recievedPacket->seq){
+									cout << " (again)";
+									// If in debug, print packet size
+									if (debug) {
+										// Write packet bytes size
+										cout << " (" << writeBytes + sizeof(PACKET) << " bytes)\n";
+									} else {
+										cout << "\n";
+									}
 								} else {
-									cout << "\n";
-								}
-								
-								// If not in debug, print filler message after 10 packets
-								if (recievedPacket->seq == 9 && debug == false) {
-									cout << "\nRecieving Remaining Packets...\n" << FORECYN;
+									lastRecievedSeq = recievedPacket->seq;
+									// If in debug, print every packet size and packet contents
+									if (debug) {
+										// Write packet bytes size
+										cout << " (" << writeBytes + sizeof(PACKET) << " bytes)\n";
+										// print packet data
+										recievedPacket->print();
+									} else {
+										cout << "\n";
+									}
+									
+									// If not in debug, print filler message after 10 packets
+									if (recievedPacket->seq == 9 && debug == false) {
+										cout << "\nRecieving Remaining Packets...\n" << FORECYN;
+									}
 								}
 							}
 							
-							// Situational Errors
-							if (sErrors == 2 && ack != 0 && ack != (framesToReceive - 1)){
-								// Random situational Errors
-								std::random_device rd;     // only used once to initialise (seed) engine
-								std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
-								std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
-
-								auto random_integer = uni(rng);
+							// Validate checksum and send ack if correct
+							if (recievedPacket->checksum == crcNew){
+								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
+								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << RESETTEXT << "..." ;
 								
-								bool random = sRandomProb > (int)random_integer;
-								if (random){
-									// manually fail checksum
-									crcNew++;
-									retransmittedPacketsRecieved++;
-								}
-							} else if (sErrors == 3 && ack != 0 && ack != (framesToReceive - 1)){
-								// Custom situational Errors
-								bool shouldDropAck = false;
-								for (int i = 0; i < sDropAckCount; i++){
-									if(droppedAcks[i] == ack){
-										shouldDropAck = true;
-										droppedAcks[i] = (droppedAcks[i] * -1);
+								// Situational Errors
+								bool looseAck = false;
+								if (sErrors == 2 && ack != 0 && recievedPacket->finalPacket == false){
+									// Generate random number in range of 0 to 100
+									std::random_device rd;
+									std::mt19937 rng(rd());
+									std::uniform_int_distribution<int> uni(0,100);
+									auto random_integer = uni(rng);
+									
+									// Use random number to determine if ack should be lost
+									looseAck = sRandomProb > (int)random_integer;
+								} else if (sErrors == 3 && ack != 0 && recievedPacket->finalPacket == false){
+									// Custom situational Errors
+									for (int i = 0; i < sDropAckCount; i++){
+										if(droppedAcks[i] == ack){
+											looseAck = true;
+											droppedAcks[i] = (droppedAcks[i] * -1);
+										}
 									}
 								}
 								
-								if (shouldDropAck){
-									// manually fail checksum
-									crcNew++;
-									retransmittedPacketsRecieved++;
+								if (looseAck){
+									// Should loose/not send ACK, this will trigger the client to re-send
+									cout << FORERED << "failed.\n" << RESETTEXT;
+								} else {
+									// Should not loose ack, send ACK
+									send(confd, & ack, sizeof(ack), 0);
+									cout << FOREGRN << "sent.\n" << RESETTEXT;
 								}
-							}
-							
-							// Validate checksum 
-							if (recievedPacket->checksum == crcNew){
-								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
-								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << "\n" << RESETTEXT;
-								cout << "  |====================\n";
-								send(confd, & ack, sizeof(ack), 0);
 								
-								if (previousPacketSeq != ack){
+								if (previousPacketSeq != ack && looseAck == false){
 									originalPacketsRecieved++;
 									// Write packet buffer to file
+									cout << "  |-Writing to file...\n";
 									fwrite(recievedPacket->buffer, 1, writeBytes, fp);
 									// update previousPacketSeq to current packet seq
 									previousPacketSeq = ack;
@@ -1192,12 +1227,11 @@ int server(bool debug) {
 								} else {
 									retransmittedPacketsRecieved++;
 								}
+								cout << "  |====================\n";
 							} else {
-								ack = ack * -1;
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
-								cout << "  |-Sending " << "ACK " << FORERED  << ack << "\n" << RESETTEXT;
-								cout << "  =========================\n";
-								send(confd, & ack, sizeof(ack), 0);
+								cout << "  | " << recievedPacket->checksum << " vs " << crcNew << "\n";
+								retransmittedPacketsRecieved++;
 							}
 							
 						} else {
@@ -1298,6 +1332,9 @@ int server(bool debug) {
 				bool recievePackets = true;
 				while (run){
 					int windowHigh = (windowLow + sWindowSize);
+					if (windowHigh > framesToReceive){
+						windowHigh = framesToReceive;
+					}
 					// recieve packets for window
 					char data[packetSize];
 					char data2[packetSize];
@@ -1321,12 +1358,62 @@ int server(bool debug) {
 							
 							// Set ack value for frame
 							if (recievedPacket.checksum == crcNew){
-								frames[frameIndex].ack = true;
-								originalPacketsRecieved++;
 								
-								if (recievedPacket.finalPacket == true){
-									recievePackets = false;
+								bool shouldDropAck = false;
+								// Situational Errors
+								if (sErrors == 2 && ack != 0 && ack != (framesToReceive - 1)){
+									// Random situational Errors
+									std::random_device rd;     // only used once to initialise (seed) engine
+									std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
+									std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
+
+									auto random_integer = uni(rng);
+									
+									bool shouldDropAck = sRandomProb > (int)random_integer;
+									if (shouldDropAck){
+										// manually fail checksum
+										crcNew++;
+										retransmittedPacketsRecieved++;
+										frames[frameIndex].ack = false;
+									} else {
+										frames[frameIndex].ack = true;
+										originalPacketsRecieved++;
+										
+										if (recievedPacket.finalPacket == true){
+											recievePackets = false;
+										}
+									}
+								} else if (sErrors == 3 && ack != 0 && ack != (framesToReceive - 1)){
+									// Custom situational Errors
+									for (int i = 0; i < sDropAckCount; i++){
+										if(droppedAcks[i] == ack){
+											shouldDropAck = true;
+											droppedAcks[i] = (droppedAcks[i] * -1);
+										}
+									}
+									
+									if (shouldDropAck){
+										// manually fail checksum
+										crcNew++;
+										retransmittedPacketsRecieved++;
+										frames[frameIndex].ack = false;
+									} else {
+										frames[frameIndex].ack = true;
+										originalPacketsRecieved++;
+										
+										if (recievedPacket.finalPacket == true){
+											recievePackets = false;
+										}
+									}
+								} else {
+									frames[frameIndex].ack = true;
+									originalPacketsRecieved++;
+										
+									if (recievedPacket.finalPacket == true){
+										recievePackets = false;
+									}
 								}
+								
 							} else {
 								frames[frameIndex].ack = false;
 								retransmittedPacketsRecieved++;
@@ -1367,11 +1454,10 @@ int server(bool debug) {
 							//	current.print();
 							//}
 							//cout << RESETTEXT << "\n";
-							perror("Timeout");
+							//perror("Timeout");
 						}
 					} else {
 						// Loop through frames in window
-						int windowHigh = (windowLow + sWindowSize);
 						cout << FORECYN << "Loop through frames in current window ";
 						cout << "(low: " << windowLow << ", high: " << windowHigh << ")\n" << RESETTEXT;
 						for (int i = windowLow; i <= windowHigh; i++){
@@ -1552,6 +1638,7 @@ void copy_packet( PACKET* packet1, PACKET* packet2 ) {
 
 // Prints current sliding window
 void printWindow(int index, int windowSize, int totalFrames){
+	totalFrames--;
 	int lowerWindow = index;
 	int upperWindow = index + windowSize;
 	if (upperWindow > totalFrames){
