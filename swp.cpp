@@ -19,6 +19,7 @@
 #include <vector>
 #include <random>
 #include <math.h>
+#include <algorithm> 
 
 #define RESETTEXT "\x1B[0m" // Set all colors back to normal.
 #define FORERED "\x1B[31m"  // Red
@@ -58,7 +59,7 @@ typedef struct PACKET {
     int src_port;
     int dst_port;
     int seq;
-	int ttl;
+	int ttl = 255;
     int checksum;
     int buffSize;
 	bool finalPacket;
@@ -303,6 +304,7 @@ int client(bool debug) {
 					} while (droppedPackets[i] <= 0 && droppedPackets[i] >= fileSize);
 				}
 			} while (sDropPacketCount <= 0 && sDropPacketCount >= fileSize);
+			sort( 0, droppedPackets.size );
 		}
 		if (sErrors <= 0 || sErrors > 3) {
 			cout << FORERED << "Invalid Situationel Errors Input Entered... please try again\n" << RESETTEXT;
@@ -357,11 +359,6 @@ int client(bool debug) {
 	if ( ( fileSize % fileReadSize ) > 0 ) {
 		framesToSend++;
 	}
-	cout << "File size: " << fileSize << "\n";
-	cout << "Packet size: " << packetSize << "\n";
-	cout << "Original Packet Struct Size: " << sizeof(PACKET) << "\n";
-	cout << "File read size: " << fileReadSize << "\n";
-	cout << "Frames to send: " << framesToSend << "\n";
 	int finalPacketSeq = -1;
 	
 	// Set output variables
@@ -536,6 +533,8 @@ int client(bool debug) {
 			bool ack = false;
 		} frame;
 		vector<frame> all_frames;
+		//int next_dropped_packet;
+		//int next_damaged_packet;
 		int seq_num = 0;
 		int head_seq_num = 0;
 		int next_seq_num = 0;
@@ -543,7 +542,8 @@ int client(bool debug) {
 		int s = 0, recievedAck;
 		PACKET sendingPacket;
 		PACKET resendingPacket;
-		
+		//bool drop;
+		//bool damage;
 		// Create vector of all frames of file
 		cout << FORECYN << "Loading Frames into memory...\n";
 		for (int i = 0; i <= framesToSend; i++) {
@@ -558,7 +558,6 @@ int client(bool debug) {
 				newMsg.src_port = 0;
 				newMsg.dst_port = port;
 				newMsg.seq = (seq_num % sRangeHigh);
-				newMsg.ttl = 5;
 				newMsg.buffer = (unsigned char*)calloc(b, sizeof(char));
 				for (int i = 0; i < b; i++){
 					newMsg.buffer[i] = readBufferTrim[i];
@@ -588,48 +587,97 @@ int client(bool debug) {
 		
 		auto start = chrono::high_resolution_clock::now();
 		do { 
-			if ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num < framesToSend && head_seq_num < framesToSend ) {					
+			while ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num < framesToSend && head_seq_num < framesToSend ) {									
+				//drop = false;
+				//damage = false;
+				/* Situational Errors
+				if ( sErrors == 2 ) {
+				// Random situational Errors
+					std::random_device rd;     // only used once to initialise (seed) engine
+					std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
+					std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
+
+					auto random_integer = uni(rng);
+
+					drop = sRandomDropProb > (int)random_integer;
+					
+					if ( !drop ) {
+						auto random_integer = uni(rng);
+								
+						damage = sRandomDamageProb > (int)random_integer;
+						if ( random_damage ){
+							// manually fail checksum
+							sendingPacket.checksum++;
+							cout << "PACKET " << next_seq_num << " RANDOMLY DAMAGED\n";
+						}
+					}
+				}
+				if ( sErrors == 3 ) {	
+					if ( droppedPackets[next_dropped_packet] == next_seq_num && next_dropped_packet < droppedPackets.size() ) {
+						drop = true;
+						next_dropped_packet++;
+					}	
+					if ( damagedPackets[next_damaged_packet] == next_seq_num && next_damaged_packet < damagedPackets.size() && !drop ) {
+						sendingPacket.checksum++;
+						next_damaged_packet++;
+						retransmittedPacketsRecieved++;
+						cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " INTENTIONALLY DAMAGED\n";
+					}
+				}
+				if ( !drop ) {
+				*/
 				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
 				char data[sizeof(PACKET) + sendingPacket.buffSize];
 				// Serialize packet into char array
 				serialize(&sendingPacket, data);
 				// Send Packet
 				send(sfd, data, sizeof(data), 0);
+				// cout << "PACKET " << ( next_seq_num % sRangeHigh ) " << " INTENTIONALLY DROPPED\n";
+				//}
 				totalBytesSent += sizeof(data);
 				originalPacketsSent++;				
-				sendingPacket.print();
+				cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " SENT\n";
 				next_seq_num++;
 			}	
 			// Check to see if an ack has been recieved
 			if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
 				cout << "Recieved Ack " << recievedAck << "\n";
-				if (recievedAck == ( head_seq_num % sRangeHigh ) ) {
+				if ( recievedAck == ( head_seq_num % sRangeHigh ) ) {
 					all_frames[head_seq_num].ack = true;
 					totalCorrectBytesSent += (all_frames[head_seq_num].packet.buffSize + sizeof(PACKET));
 					head_seq_num++;
 					cout << "Incrementing head index of window frame...\n";	
-					printWindow(head_seq_num, sWindowSize, framesToSend);
+					printWindow( ( head_seq_num % sRangeHigh), sWindowSize, framesToSend);
 				}
 			}
 			auto now = chrono::high_resolution_clock::now();
 			ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 			if ( timeout < ms && head_seq_num < framesToSend ) {
 				cout << "  |-" << FORERED << "ACK TIMEOUT  " << RESETTEXT << " (Resending Packet)\n";
-				auto start = chrono::high_resolution_clock::now();
-				for( int i = head_seq_num; i < next_seq_num; i++ ) {				
-					copy_packet( &all_frames[i].packet, &resendingPacket );
-					char data[sizeof(PACKET) + resendingPacket.buffSize];
-					// Serialize packet into char array
-					serialize(&resendingPacket, data);
-					// Send Packet
-					send(sfd, data, sizeof(data), 0);
-					totalBytesSent += sizeof(data);
-					retransmittedPacketsSent++;
-					resendingPacket.print();					
-				}					
+				if ( all_frames[head_seq_num].packet.ttl > 0 ) { 
+					for( int i = head_seq_num; i < next_seq_num; i++ ) {				
+						copy_packet( &all_frames[i].packet, &resendingPacket );
+						char data[sizeof(PACKET) + resendingPacket.buffSize];
+						// Serialize packet into char array
+						serialize(&resendingPacket, data);
+						// Send Packet
+						send(sfd, data, sizeof(data), 0);
+						cout << "PACKET " << ( i % sRangeHigh ) << " RESENT\n";
+						totalBytesSent += sizeof(data);
+						retransmittedPacketsSent++;
+						//resendingPacket.print();
+					}
+					start = chrono::high_resolution_clock::now();
+					all_frames[head_seq_num].packet.ttl--;	
+					cout << "CURRENT HEAD PACKET " << head_seq_num << " TTL = " << all_frames[head_seq_num].packet.ttl << "\n";				
+				} else {
+					break;
+				}				
 			}
 		} while ( head_seq_num < framesToSend );
-		transferFinished = true;
+		if ( head_seq_num == framesToSend ) {
+			transferFinished = true;
+		}
 	} 
 	
 	// Selective Repeat
@@ -960,6 +1008,7 @@ int server(bool debug) {
 					} while (droppedAcks[i] <= 0 && droppedAcks[i] >= fileSize);
 				}
 			} while (sDropAckCount <= 0 && sDropAckCount >= fileSize);
+			sort( droppedAcks.begin(), droppedAcks.end() );
 		}
 		if (sErrors <= 0 || sErrors > 3) {
 			cout << FORERED << "Invalid Situational Errors Input Entered... please try again\n" << RESETTEXT;
@@ -1215,6 +1264,9 @@ int server(bool debug) {
 			
 			// Go-Back-N
 			if (pMode == 2) {
+				//int next_dropped_ack = 0;
+				struct timeval tv;
+				tv.tv_sec = 30;
 				int next_seq_num = 0; 
 				char data[packetSize];
 				char data2[packetSize];
@@ -1224,7 +1276,7 @@ int server(bool debug) {
 						PACKET recievedPacket;
 						deserialize(data, &recievedPacket);
 						
-						// Print output
+						/* Print output
 						if (recievedPacket.seq < 10 || debug == true) {
 							// Print "Sent Packet x" <- x = current packet number
 							cout << "Recieved Packet #" << recievedPacket.seq;
@@ -1244,7 +1296,8 @@ int server(bool debug) {
 								cout << "\nRecieving Remaining Packets...\n" << FORECYN;
 							}
 						}
-						
+						*/
+						cout << "PACKET " << recievedPacket.seq << " RECEIVED\n";
 						// Validate checksum, write to file, send ack if next expected packet
 						if ( recievedPacket.seq == (next_seq_num % sRangeHigh) ) { 
 							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
@@ -1254,27 +1307,59 @@ int server(bool debug) {
 							int crcNew = compute_crc16(temp.buffer);
 							if (recievedPacket.checksum == crcNew) {
 								ack = recievedPacket.seq;
+								int writeBytes = recievedPacket.buffSize;
+								fwrite(recievedPacket.buffer, 1, writeBytes, fp);
 								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
 								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << "\n" << RESETTEXT;
 								cout << "  |====================\n";
-								// Calculate amount of bytes to write to file
-								int writeBytes = recievedPacket.buffSize;
-								fwrite(recievedPacket.buffer, 1, writeBytes, fp);
+								/* Situational Errors
+								if ( sErrors == 2 ) {
+									// Random situational Errors
+									std::random_device rd;     // only used once to initialise (seed) engine
+									std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
+									std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
+
+									auto random_integer = uni(rng);
+								
+									bool random = sRandomProb > (int)random_integer;
+									if (random){
+										retransmittedPacketsRecieved++;
+										cout << "ACK " << ( next_seq_num % sRangeHigh ) << " RANDOMLY LOST\n";
+									}
+								} else if ( sErrors == 3 ) {
+									if ( droppedAcks[next_dropped_ack] == next_seq_num && next_dropped_ack < droppedAcks.size() ) {
+										next_dropped_ack++;
+										retransmittedPacketsRecieved++;
+										cout << "ACK " << ( next_seq_num % sRangeHigh ) << " INTENTIONALLY LOST\n";
+									} else {
+										send(confd, &ack, sizeof(ack), 0);
+									}
+								} else {
+								*/	
 								send(confd, &ack, sizeof(ack), 0);
+								//}
 								originalPacketsRecieved++;
 								next_seq_num++;
 								if ( next_seq_num < framesToReceive ) {
-									cout << "Current Window [" << next_seq_num << "]\n";
+									cout << "Current Window [" << ( next_seq_num % sRangeHigh ) << "]\n";
 								}
 							} else {
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
 								cout << "  =========================\n";
-								cout << "Current Window [" << next_seq_num << "]\n";
+								cout << "Current Window [" << ( next_seq_num % sRangeHigh ) << "]\n";
 							}
 						}
 					}
+					if ( setsockopt(confd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ) {
+						perror("Receiver Timed Out\n");
+						break;
+					} 
 				} while ( next_seq_num < framesToReceive );
-				transferFinished = true;
+				lastPacketSeq = ( next_seq_num % sRangeHigh ) - 1;
+				if ( next_seq_num == framesToReceive ) {
+					transferFinished = true;
+					lastPacketSeq = ( framesToReceive % sRangeHigh );
+				}
 			} 
 			
 			// Selective Repeat
