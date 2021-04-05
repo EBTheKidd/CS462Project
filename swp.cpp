@@ -1097,6 +1097,7 @@ int server(bool debug) {
 			
 			struct timeval tv;
 			tv.tv_sec = 5;
+			tv.tv_usec = 0;
 			if (setsockopt(confd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
 				perror("Error");
 			}
@@ -1108,7 +1109,7 @@ int server(bool debug) {
 			if ( ( fileSize % fileReadSize ) > 0 ) {
 				framesToReceive++;
 			}
-			//cout << "Frames to recieve: " << framesToReceive << "\n";
+			cout << "Frames to recieve: " << framesToReceive << "\n";
 			
 			std::random_device rd;     // only used once to initialise (seed) engine
 			std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
@@ -1394,6 +1395,25 @@ int server(bool debug) {
 							copy_packet(&recievedPacket, &copyPacket);
 							int crcNew = compute_crc16(copyPacket.buffer);
 							
+							// Print output
+							if (recievedPacket.seq < 10 || debug == true) {
+								// Print "Sent Packet x" <- x = current packet number
+								cout << "Recieved Packet #" << frameIndex;
+								
+								// If in debug, print packet data
+								if (debug) {
+									cout << "(" << b << " bytes)\n";
+									//recievedPacket.print();
+								} else {
+									cout << "\n";
+								}
+								
+								// If not in debug, print filler message after 10 packets
+								if (recievedPacket.seq == 9 && debug == false) {
+									cout << "\nRecieving Remaining Packets...\n";
+								}
+							}
+							
 							// Set ack value for frame
 							if (recievedPacket.checksum == crcNew){
 								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
@@ -1424,36 +1444,14 @@ int server(bool debug) {
 								}
 								originalPacketsRecieved++;
 								next_seq_num++;
-								
-								
 							} else {
 								frames[frameIndex].ack = false;
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
 							}
 							
+							
 							if (frames[frameIndex].packet.finalPacket == true){
 								recievePackets = false;
-								break;
-							}
-							
-							
-							// Print output
-							if (recievedPacket.seq < 10 || debug == true) {
-								// Print "Sent Packet x" <- x = current packet number
-								cout << "Recieved Packet #" << frameIndex;
-								
-								// If in debug, print packet data
-								if (debug) {
-									cout << "(" << b << " bytes)\n";
-									//recievedPacket.print();
-								} else {
-									cout << "\n";
-								}
-								
-								// If not in debug, print filler message after 10 packets
-								if (recievedPacket.seq == 9 && debug == false) {
-									cout << "\nRecieving Remaining Packets...\n";
-								}
 							}
 						
 						} else {
