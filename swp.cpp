@@ -128,7 +128,7 @@ int main(int argc, char * argv[]) {
 // Client function, send file to server
 int client(bool debug) {
     // Declare necessary variables/structures
-    int sfd = 0, n = 0, b, port, packetNum = 0, count = 0, sDropPacketCount = 0;
+    int sfd = 0, local_port = 0, n = 0, b, port, packetNum = 0, count = 0, sDropPacketCount = 0;
 	vector<int> droppedPackets;
 	vector<int> damagedPackets;
     char ip[32], fileName[64];
@@ -308,6 +308,7 @@ int client(bool debug) {
     } while (sErrors <= 0 || sErrors > 3);
 
     // Set family, port, and ip for socket
+	socklen_t addrlen = sizeof(serv_addr);
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     serv_addr.sin_addr.s_addr = inet_addr(ip);
@@ -346,7 +347,11 @@ int client(bool debug) {
 		
 		cout << FOREGRN << "Settings Sent!\n" << RESETTEXT;
 	}
-
+	
+	// Get local port for client socket
+	getsockname(sfd, (struct sockaddr *)&serv_addr, &addrlen); // read binding
+	local_port = ntohs(serv_addr.sin_port);  // get the port number
+	
     // Set client variables
     bool run = true, transferFinished = false;
 	int fileReadSize = packetSize - sizeof(PACKET);	
@@ -371,7 +376,6 @@ int client(bool debug) {
 	
 	// Stop and wait
 	if (pMode == 1){
-		// Stop And Wait
 		while (run) {
 			PACKET packetToResend;
 			// memset sendbuffer to make sure its empty (might not be needed)
@@ -389,7 +393,7 @@ int client(bool debug) {
 					
 				// Build Packet
 				PACKET* newMsg = new PACKET;
-				newMsg->src_port = 0;
+				newMsg->src_port = local_port;
 				newMsg->dst_port = port;
 				newMsg->seq = packetNum;
 				newMsg->checksum = compute_crc16(reinterpret_cast<unsigned char*>(readBufferTrim));
@@ -491,11 +495,11 @@ int client(bool debug) {
 					int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 					
 					// Check to see if timeout has been reached
-					if (timeout < ms && transferFinished == false ){
+					if (timeout < ms && transferFinished == false){
 						cout << "  |-" << FORERED << "ACK timed out for packet "<< packetNum << " (TTL: " << packetToResend.ttl << ")" << RESETTEXT << ", resending...";
 						packetToResend.ttl--;
 						
-						// If packet's TTL is not 0, re-send the packet.
+						// If packet's TTL is not 0, resend the packet.
 						if (packetToResend.ttl != 0){
 							char data2[sizeof(PACKET) + b];
 							serialize(&packetToResend, data2);
@@ -505,9 +509,10 @@ int client(bool debug) {
 							totalBytesSent += sentBytes;
 							retransmittedPacketsSent++;
 							cout << "sent.\n";
-							// reset timeout timer
-							start = chrono::high_resolution_clock::now();
 						}
+						
+						// reset timeout timer
+						start = chrono::high_resolution_clock::now();
 					} else if (transferFinished){
 						run = false;
 					}
@@ -1106,11 +1111,17 @@ int server(bool debug) {
         // Begin Filel Transfer
         cout << "\n[File Transfer]\n";
         if (fp != NULL) {
-            bool run = true;
-			bool transferFinished = false;
-			int ack;
-			int lastPacketSeq = 0;
+			// Transfer/Output Variables
+			int fileReadSize = packetSize - sizeof(PACKET);
+			int framesToReceive= (int) (fileSize/fileReadSize);
+			if ( ( fileSize % fileReadSize ) > 0 ) {
+				framesToReceive++;
+			}
+			cout << "Frames to recieve: " << framesToReceive << "\n";
+            bool run = true, transferFinished = false;
+			int ack, lastPacketSeq = 0, originalPacketsRecieved = 0, retransmittedPacketsRecieved = 0;
 			
+			// Set timeout for server socket
 			struct timeval tv;
 			tv.tv_sec = 5;
 			tv.tv_usec = 0;
@@ -1118,39 +1129,31 @@ int server(bool debug) {
 				perror("Error");
 			}
 			
-			// Set up variables for final output
-			int originalPacketsRecieved = 0, retransmittedPacketsRecieved = 0;
-			int fileReadSize = packetSize - sizeof(PACKET);
-			int framesToReceive= (int) (fileSize/fileReadSize);
-			if ( ( fileSize % fileReadSize ) > 0 ) {
-				framesToReceive++;
-			}
-			cout << "Frames to recieve: " << framesToReceive << "\n";
-			
-			std::random_device rd;     // only used once to initialise (seed) engine
-			std::mt19937 rng(rd());    // random-number engine used (Mersenne-Twister in this case)
-			std::uniform_int_distribution<int> uni(0,100); // guaranteed unbiased
+			// Random Number Generator
+			std::random_device rd;
+			std::mt19937 rng(rd());
+			std::uniform_int_distribution<int> uni(0,100);
 			
 			// Stop and wait
 			if (pMode == 1) {
-				int previousPacketSeq = -1;
 				int lastRecievedSeq = -1;
-				// Stop And Wait
 				while (run){
+					// Per-Packet variables
 					char data[packetSize];
 					char data2[packetSize];
-                    if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {
-						
+					bool packetWritten = false;
+                    if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0 && transferFinished == false) {
 						// Deserialize packet
 						PACKET* recievedPacket = new PACKET;
 						deserialize(data, recievedPacket);
+						
 						// Calculate amount of bytes to write to file
 						int writeBytes = recievedPacket->buffSize;
 						
-						// Determine if recieved packet is a re-sent packet
-						bool packetWasSentAgain = false;
+						// Determine if packet has been recieved previously
+						bool resentPacket = false;
 						if (lastRecievedSeq == recievedPacket->seq){
-							packetWasSentAgain = true;
+							resentPacket = true;
 							retransmittedPacketsRecieved++;
 						} else {
 							lastRecievedSeq = recievedPacket->seq;
@@ -1163,21 +1166,15 @@ int server(bool debug) {
 							deserialize(data2, temp);
 							int crcNew = compute_crc16(temp->buffer);
 							
-							// Determine if current packet is final packet
-							if (recievedPacket->finalPacket == true) {
-								transferFinished = true;
-								lastPacketSeq = recievedPacket->seq;
-							}
-							
 							// Set ack responce
 							ack = recievedPacket->seq;
 							
-							// Print output
+							// Print recieved packet's output
 							if (recievedPacket->seq < 10 || debug == true) {
 								// Print "Sent Packet x" <- x = current packet number
 								cout << "Recieved Packet #" << recievedPacket->seq;
 								
-								if (packetWasSentAgain){
+								if (resentPacket){
 									cout << " (again)";
 								}
 								// If in debug, print every packet size and packet contents
@@ -1185,7 +1182,7 @@ int server(bool debug) {
 									// Write packet bytes size
 									cout << " (" << writeBytes + sizeof(PACKET) << " bytes)\n";
 									// print packet data
-									if (!packetWasSentAgain){
+									if (!resentPacket){
 										recievedPacket->print();
 									}
 								} else {
@@ -1193,7 +1190,7 @@ int server(bool debug) {
 								}
 							}
 							
-							// Validate checksum and send ack if correct
+							// Validate recieved packets checksum
 							if (recievedPacket->checksum == crcNew){
 								cout << "  |-Checksum " << FOREGRN << "OK\n" << RESETTEXT;
 								cout << "  |-Sending " << "ACK " << FOREGRN  << ack << RESETTEXT << "...";
@@ -1225,40 +1222,35 @@ int server(bool debug) {
 									send(confd, &ack, sizeof(ack), 0);
 								}
 								
-								if (previousPacketSeq != ack && dropAck == false){
+								// Write packet to file (if ACK was not dropped)
+								if (dropAck == false){
 									originalPacketsRecieved++;
-									// Write packet buffer to file
 									fwrite(recievedPacket->buffer, 1, writeBytes, fp);
-									// update previousPacketSeq to current packet seq
-									previousPacketSeq = ack;
-									if (transferFinished){
-										run = false;
-									}
+									packetWritten = true;
 								} 
 								cout << "  |====================\n";
 							} else {
 								cout << "  |-Checksum " << FORERED << "failed\n" << RESETTEXT;
-								//cout << "  | " << recievedPacket->checksum << " vs " << crcNew << "\n";
 							}
 							
 							// If not in debug, print filler message after 10 packets
 							if (recievedPacket->seq == 9 && debug == false) {
 								cout << "\nRecieving Remaining Packets...\n\n" << RESETTEXT;
 							}
-						
-						} else {
-							cout << "weird packet recieved... (#" << recievedPacket->seq << "), skipping...\n";
-							for (int i = 0; i < sizeof(data); i++){
-								data[i] = NULL;
+							
+							// Determine if current packet is final packet
+							if (recievedPacket->finalPacket == true && packetWritten == true) {
+								transferFinished = true;
+								run = false;
+								lastPacketSeq = recievedPacket->seq;
+								break;
 							}
+						} else {
+							cout << FORERED << "Invalid packet recieved... (#" << recievedPacket->seq << "), skipping...\n" << RESETTEXT;
 						}
-						
-						
                     } else {
-						cout << "timeout reached";
 						run = false;
 						break;
-						//perror("Timeout");
 					}
 				}
 			}
