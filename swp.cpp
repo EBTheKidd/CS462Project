@@ -781,9 +781,8 @@ int client(bool debug) {
 							if (currentPacket.finalPacket == true){
 								cout << "Final Packet Sent...\n";
 								shouldSendPacket = false;
-								break;
 							}
-						} else if (frames[f].sent == true){
+						} else if (frames[f].sent == true && frames[f].ack == false ){
 							cout << "Frame " << f << " needs to be ACK'd\n";
 							// Calculate time passed since packet was sent
 							auto now = chrono::high_resolution_clock::now();
