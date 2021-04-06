@@ -24,7 +24,7 @@
   - No Errors, 64k Packet Size, 100ms timeout, 1Gtestfile, window size of 5
     - Transfered Successfully
     - ~2-3 minute transfer time
-  - No Errors, 64k Packet Size, 100ms timeout, 1Gtestfile, window size of 512
+  - No Errors, 64k Packet Size, 1000ms timeout, 1Gtestfile, window size of 512
     - Transfered Successfully
     - ~1-2 minute transfer time
   - 5% Random Errors (both), 64k Packet Size, 100ms timeout, 1Gtestfile, window size of 5
