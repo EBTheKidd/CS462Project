@@ -2,15 +2,15 @@
 
 <img src="https://img.shields.io/badge/platform-linux-success.svg"> <img src="https://img.shields.io/badge/version-0.6.1-green">
 
-Demo:
-	1. Presentations Start April 12th
-	2. 1 Hour Demos
-	3. First Come First Serve
-	4. Paramaters
-		a. Packet Size: 8k-64k
-		b. Timeout: 5ms-5s
-		c. Window: 16 - 256/512          <--- Apparently this is different between client and server
-		d. Errors: specific Packet numbers
+Project Demo:
+- Presentations Start April 12th
+- 1 Hour Demos
+- First Come First Serve
+- Paramaters
+  - Packet Size: 8k-64k
+b. Timeout: 5ms-5s
+c. Window: 16 - 256/512          <--- Apparently this is different between client and server
+d. Errors: specific Packet numbers
 	
 	
 	
