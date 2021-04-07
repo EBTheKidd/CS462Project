@@ -764,7 +764,7 @@ int client(bool debug) {
 							// Situational Errors
 							bool damagePacket = false;
 							bool dropPacket = false;
-							if (sErrors == 2 && f != 0){
+							if (sErrors == 2 && f != 0 && f != (framesToSend - 1)){
 								auto random_integer1 = uni(rng);
 								dropPacket = sRandomProb > (int)random_integer1;
 								auto random_integer2 = uni(rng);
@@ -775,7 +775,7 @@ int client(bool debug) {
 									currentPacket.checksum += 1;
 									cout << "  |-" << FORERED << "PACKET " << f << " RANDOMLY DAMAGED\n" << RESETTEXT;
 								}
-							} else if (sErrors == 3 && f != 0){
+							} else if (sErrors == 3 && f != 0 && f != (framesToSend - 1)){
 								if (find(droppedPackets.begin(), droppedPackets.end(), f) != droppedPackets.end()){
 									dropPacket = true;
 									cout << "  |-" << FORERED << "PACKET " << f << " INTENTIONALLY DROPPED\n" << RESETTEXT;
