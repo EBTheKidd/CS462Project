@@ -806,6 +806,8 @@ int client(bool debug) {
 							auto now = chrono::high_resolution_clock::now();
 							int lifetime = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - frames[f].lifeStart).count();
 							
+							cout << "Packet " << f << " still needs an ack! (" << lifetime << " ms)\n";
+							
 							// if life time of packet is greater than timeout, resend packet
 							if (lifetime > timeout){
 								frames[f].sent = false;
