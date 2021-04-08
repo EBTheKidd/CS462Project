@@ -744,7 +744,7 @@ int client(bool debug) {
 						shouldSendPacket = true;
 					} else {
 						int timepassed = (std::clock() - frames[f].lifeStart) / (double) (CLOCKS_PER_SEC / 1000);
-						cout << "Packet " << frames[f].packet.seq << " still needs an ack! (" << timepassed << " ms)\n";
+						//cout << "Packet " << frames[f].packet.seq << " still needs an ack! (" << timepassed << " ms)\n";
 						// if life time of packet is greater than timeout, resend packet
 						if (timepassed > timeout){
 							cout << FORERED << "Packet " << frames[f].packet.seq << " timed out after " << timepassed << " ms...\n" << RESETTEXT;
@@ -768,8 +768,8 @@ int client(bool debug) {
 			
 			// Loop through frames
 			if (shouldSendPacket){
-				cout << FORECYN << "Loop through all frames, Window: ";
-				cout << "(low: " << windowLow << ", high: " << windowHigh << ")\n" << RESETTEXT;
+				//cout << FORECYN << "Loop through all frames, Window: ";
+				//cout << "(low: " << windowLow << ", high: " << windowHigh << ")\n" << RESETTEXT;
 				for (int f = 0; f < framesToSend; f++){
 					// if current frame needs to be sent/resent
 					if ((frames[f].sent == false || frames[f].resending == true) && frames[f].packet.buffSize > 0){
@@ -852,7 +852,7 @@ int client(bool debug) {
 			auto ackTimeStart = chrono::high_resolution_clock::now();
 			bool lowFrameAckd = false;
 			
-			cout << "Waiting for ack(s)\n";
+			//cout << "Waiting for ack(s)\n";
 			// Loop until current low window frame is ack'd
 			while (lowFrameAckd == false && transferFinished == false ){
 				// Check to see if an ack has been recieved
@@ -871,7 +871,7 @@ int client(bool debug) {
 				// Check if all packets have been ack'd and increment window if needed
 				for (int f = 0; f < framesToSend; f++){
 					if (frames[f].ack == true && frames[f].packet.seq == windowLow){
-						cout << "Low Frame " << frames[f].packet.seq << " has been ack'd, incrementing window\n";
+						//cout << "Low Frame " << frames[f].packet.seq << " has been ack'd, incrementing window\n";
 						lowFrameAckd = true;
 						windowLow++;
 						printWindow(windowLow, sWindowSize, framesToSend);
@@ -1359,7 +1359,7 @@ int server(bool debug) {
 					char data2[packetSize];
 					
 					if (transferFinished == false && recievePackets == true){
-						cout << FORECYN << "Waiting for incomming packets\n" << RESETTEXT;
+						//cout << FORECYN << "Waiting for incomming packets\n" << RESETTEXT;
 						if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {
 							counter++;
 							// Deserialize packet
@@ -1410,10 +1410,10 @@ int server(bool debug) {
 						
 						} else {
 							// Packets expected, but none are recieved
-							cout << "Packets are expected but none are recieved...\n";
+							//cout << "Packets are expected but none are recieved...\n";
 						} 
 					} else {
-						cout << FORECYN << "Sending Ack(s)\n" << RESETTEXT;
+						//cout << FORECYN << "Sending Ack(s)\n" << RESETTEXT;
 						// Loop through frames in window to send acks
 						for (int i = 0; i < framesToReceive; i++){
 							if (frames[i].ack == true && frames[i].sentAck == false) {
@@ -1454,7 +1454,7 @@ int server(bool debug) {
 							
 							// Check if low frame has been ack'd 
 							if (frames[i].ack == true && i == windowLow && frames[i].sentAck == true){
-								cout << "Low Frame Ack'd\n";
+								//cout << "Low Frame Ack'd\n";
 								windowLow++;
 								// Print current window
 								printWindow(windowLow, sWindowSize, framesToReceive);
@@ -1501,7 +1501,7 @@ int server(bool debug) {
 				cout << "Number of original packets recieved: " << FORECYN << originalPacketsRecieved << RESETTEXT << "\n";
 				cout << "Number of retransmitted packets recieved: " << FORECYN << retransmittedPacketsRecieved << RESETTEXT << "\n";
 				// Wait to make sure file is saved
-				std::chrono::seconds dura( 5);
+				std::chrono::seconds dura(3);
 				std::this_thread::sleep_for( dura );
 				// Print md5
                 md5(fileName);
@@ -1626,7 +1626,7 @@ void printWindow(int index, int windowSize, int totalFrames){
 	if (upperWindow > totalFrames){
 		upperWindow = totalFrames;
 	}
-	cout << "Current Window [";
+	cout << "  |-Current Window [";
 	for (int i = lowerWindow; i <= upperWindow; i++){
 		if (i != upperWindow){
 			cout << i << ", ";
