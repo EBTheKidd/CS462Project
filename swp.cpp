@@ -1213,7 +1213,7 @@ int server(bool debug) {
 							if (recievedPacket->finalPacket == true && packetWritten == true) {
 								transferFinished = true;
 								run = false;
-								lastPacketSeq = recievedPacket->seq;
+								lastPacketSeq = (recievedPacket->seq % 2);
 								break;
 							}
 						} else {
@@ -1463,6 +1463,7 @@ int server(bool debug) {
 								fwrite(frames[i].packet.buffer, 1, frames[i].packet.buffSize, fp);
 								// If this is the last packet, finish the transmission
 								if (i == lastPacketSeq){
+									lastPacketSeq = (lastPacketSeq % sRangeHigh);
 									transferFinished = true;
 									run = false;
 									break;
