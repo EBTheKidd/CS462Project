@@ -533,8 +533,7 @@ int client(bool debug) {
 		PACKET resendingPacket;
 		bool drop;
 		bool damage;
-		char  *senderDone = "1";
-		// Create vector of all frames of file
+		// Create vector of all frames of the file
 		cout << FORECYN << "Loading Frames into memory...\n";
 		for (int i = 0; i < framesToSend; i++) {
 			char readBuffer[fileReadSize];
@@ -575,7 +574,7 @@ int client(bool debug) {
 			seq_num++;
 		}
 		cout << RESETTEXT << "\n";
-		
+		// Start transfer
 		auto start = chrono::high_resolution_clock::now();
 		do { 
 			while ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num < framesToSend ) {									
@@ -583,7 +582,9 @@ int client(bool debug) {
 				damage = false;
 				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
 				char data[sizeof(PACKET) + sendingPacket.buffSize];
+				//Situational Errors
 				if ( sErrors == 2 ) {
+					// Random Situational Errors
 					auto random_integer1 = uni(rng);
 					drop = sRandomProb > (int)random_integer1;
 					auto random_integer2 = uni(rng);
@@ -599,6 +600,7 @@ int client(bool debug) {
 					} 
 				} else {
 					if ( sErrors == 3 ) {	
+						// Custom Situational Erros
 						if ( droppedPackets[next_dropped_packet] == next_seq_num && next_dropped_packet < droppedPackets.size() ) {
 							drop = true;
 							next_dropped_packet++;
@@ -622,6 +624,7 @@ int client(bool debug) {
 				cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " SENT\n";
 				next_seq_num++;
 			}
+			// Receive acks
 			if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
 				cout << "  |-Recieved Ack " << FOREGRN << recievedAck << "\n" << RESETTEXT;
 				if ( recievedAck == ( head_seq_num % sRangeHigh ) ) {
@@ -633,6 +636,7 @@ int client(bool debug) {
 					start = chrono::high_resolution_clock::now();
 				}
 			}
+			// Check timeout
 			auto now = chrono::high_resolution_clock::now();
 			ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 			if ( timeout < ms && head_seq_num < framesToSend ) {
@@ -657,6 +661,7 @@ int client(bool debug) {
 				}				
 			}
 		} while ( head_seq_num < framesToSend );
+		// Send final packet confirmation packet to let receiver know transfer is complete
 		if ( head_seq_num == framesToSend ) {
 			copy_packet( &all_frames[framesToSend-1].packet, &resendingPacket );
 			char data[sizeof(PACKET) + resendingPacket.buffSize];
@@ -1237,14 +1242,15 @@ int server(bool debug) {
 				char data2[packetSize];
 				bool drop = false;
 				bool senderFinished = false;
+				// Start Receiving
 				do {	
 					drop = false;
                     if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {						
-						// Deserialize packet
 						PACKET recievedPacket;
 						deserialize(data, &recievedPacket);
-						
-						/* Print output
+						cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " RECEIVED\n";
+
+						// Print debug output
 						if (recievedPacket.seq < 10 || debug == true) {
 							// Print "Sent Packet x" <- x = current packet number
 							cout << "Recieved Packet #" << recievedPacket.seq;
@@ -1264,11 +1270,9 @@ int server(bool debug) {
 								cout << "\nRecieving Remaining Packets...\n" << FORECYN;
 							}
 						}
-						*/
-						cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " RECEIVED\n";
+						
 						// Validate checksum, write to file, send ack if next expected packet
 						if ( recievedPacket.seq == (next_seq_num % sRangeHigh) ) { 
-							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
 							PACKET temp;
 							memcpy( data2, data, sizeof(data) );
 							deserialize(data2, &temp);
@@ -1281,7 +1285,7 @@ int server(bool debug) {
 								cout << "  |-Sending " << "ACK " << FOREGRN << ack << RESETTEXT << "..." ;
 								// Situational Errors
 								if ( sErrors == 2 ) {
-									// Random situational Errors
+									// Random Situational Errors
 									auto random_integer = uni(rng);	
 									drop = sRandomProb > (int)random_integer;
 									if ( drop ){
@@ -1292,6 +1296,7 @@ int server(bool debug) {
 										cout << FOREGRN << "sent!\n" << RESETTEXT;
 									}
 								} else if ( sErrors == 3 ) {
+									// Custom Situational Errors
 									if ( droppedAcks[next_dropped_ack] == next_seq_num && next_dropped_ack < droppedAcks.size() ) {
 										next_dropped_ack++;
 										retransmittedPacketsRecieved++;
@@ -1320,11 +1325,13 @@ int server(bool debug) {
 							send(confd, &ack, sizeof(ack), 0);
 						}
 					}
+					// Time out if nothing is being sent from sender
 					if ( setsockopt(confd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ) {
 						perror("Receiver Timed Out\n");
 						break;
 					} 
-				} while ( next_seq_num < framesToReceive );					
+				} while ( next_seq_num < framesToReceive );		
+				// Check if sender is received all packets and is done transferring			
 				while ( !senderFinished ) {
 					if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {		
 						PACKET recievedPacket;
