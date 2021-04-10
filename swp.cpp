@@ -532,10 +532,10 @@ int client(bool debug) {
 		PACKET resendingPacket;
 		bool drop;
 		bool damage;
-		bool receiverDone = false;
+		char  *senderDone = "1";
 		// Create vector of all frames of file
 		cout << FORECYN << "Loading Frames into memory...\n";
-		for (int i = 0; i <= framesToSend; i++) {
+		for (int i = 0; i < framesToSend; i++) {
 			char readBuffer[fileReadSize];
 			if (((b = fread(readBuffer, 1, fileReadSize, fp)) > 0)) {
 				char readBufferTrim[b];
@@ -553,8 +553,9 @@ int client(bool debug) {
 				}
 				newMsg.checksum = compute_crc16(newMsg.buffer); // compute crc16 from buffer
 				newMsg.buffSize = b;
-				if (i == framesToSend){
+				if (i == framesToSend - 1){
 					newMsg.finalPacket = true;
+					cout << "Buffer size of last packet: " << b + "\n";
 				} else {
 					newMsg.finalPacket = false;
 				}
@@ -576,12 +577,11 @@ int client(bool debug) {
 		
 		auto start = chrono::high_resolution_clock::now();
 		do { 
-			while ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num < framesToSend && head_seq_num < framesToSend ) {									
+			while ( next_seq_num < ( head_seq_num + sWindowSize ) && next_seq_num < framesToSend ) {									
 				drop = false;
 				damage = false;
 				copy_packet( &all_frames[next_seq_num].packet, &sendingPacket );
 				char data[sizeof(PACKET) + sendingPacket.buffSize];
-				// Situational Errors
 				if ( sErrors == 2 ) {
 					auto random_integer1 = uni(rng);
 					drop = sRandomProb > (int)random_integer1;
@@ -592,7 +592,6 @@ int client(bool debug) {
 						cout << "  |-" << FORERED << "PACKET " << ( next_seq_num % sRangeHigh ) << " RANDOMLY DROPPED\n" << RESETTEXT;
 					} else {
 						if ( damage ) {
-							// manually fail checksum
 							sendingPacket.checksum += 1;
 							cout << FORERED << "PACKET " << ( next_seq_num % sRangeHigh ) << " RANDOMLY DAMAGED\n" << RESETTEXT;
 						}
@@ -614,17 +613,14 @@ int client(bool debug) {
 					}
 				}
 				if ( !drop ) {
-					// Serialize packet into char array
 					serialize(&sendingPacket, data);
-					// Send Packet
 					send(sfd, data, sizeof(data), 0);
 				}
 				totalBytesSent += sizeof(data);
 				originalPacketsSent++;				
 				cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " SENT\n";
 				next_seq_num++;
-			}	
-			// Check to see if an ack has been recieved
+			}
 			if (s = recv(sfd, &recievedAck, sizeof(recievedAck), MSG_DONTWAIT ) > 0) {
 				cout << "  |-Recieved Ack " << FOREGRN << recievedAck << "\n" << RESETTEXT;
 				if ( recievedAck == ( head_seq_num % sRangeHigh ) ) {
@@ -633,6 +629,7 @@ int client(bool debug) {
 					head_seq_num++;
 					cout << "  |-Incrementing head index of window frames[f]...\n";	
 					printWindow( ( head_seq_num % sRangeHigh), sWindowSize, framesToSend);
+					start = chrono::high_resolution_clock::now();
 				}
 			}
 			auto now = chrono::high_resolution_clock::now();
@@ -640,17 +637,15 @@ int client(bool debug) {
 			if ( timeout < ms && head_seq_num < framesToSend ) {
 				cout << "  |-" << FORERED << "ACK TIMEOUT " << RESETTEXT << "Resending Packet(s)...\n";
 				if ( all_frames[head_seq_num].packet.ttl > 0 ) { 
-					for( int i = head_seq_num; i < next_seq_num; i++ ) {				
+					for( int i = head_seq_num; i < next_seq_num; i++ ) {	
 						copy_packet( &all_frames[i].packet, &resendingPacket );
 						char data[sizeof(PACKET) + resendingPacket.buffSize];
-						// Serialize packet into char array
 						serialize(&resendingPacket, data);
-						// Send Packet
 						send(sfd, data, sizeof(data), 0);
 						totalBytesSent += sizeof(data);
 						retransmittedPacketsSent++;
 						//resendingPacket.print();
-						cout << "  |-" << FOREGRN << "Packet " << resendingPacket.seq << " sent.\n" << RESETTEXT;
+						cout << "  |-" << FOREGRN << "Packet " << i << " sent.\n" << RESETTEXT;
 					}
 					start = chrono::high_resolution_clock::now();
 					all_frames[head_seq_num].packet.ttl--;	
@@ -662,6 +657,10 @@ int client(bool debug) {
 			}
 		} while ( head_seq_num < framesToSend );
 		if ( head_seq_num == framesToSend ) {
+			copy_packet( &all_frames[framesToSend-1].packet, &resendingPacket );
+			char data[sizeof(PACKET) + resendingPacket.buffSize];
+			serialize(&resendingPacket, data);
+			send(sfd, data, sizeof(data), 0);
 			transferFinished = true;
 		}
 	} 
@@ -1265,7 +1264,7 @@ int server(bool debug) {
 							}
 						}
 						*/
-						cout << "PACKET " << recievedPacket.seq << " RECEIVED\n";
+						cout << "PACKET " << ( next_seq_num % sRangeHigh ) << " RECEIVED\n";
 						// Validate checksum, write to file, send ack if next expected packet
 						if ( recievedPacket.seq == (next_seq_num % sRangeHigh) ) { 
 							// Compute CRC16 from duplicated 'temp' packet (using actual packet causes data corruption)
@@ -1316,18 +1315,27 @@ int server(bool debug) {
 								cout << "  =========================\n";
 							}
 						} else {
-							// Make sure we are not sending an ack for an invalid packet (out of frame range)
-							if (recievedPacket.seq <= framesToReceive && recievedPacket.seq >= 0){
-								ack = recievedPacket.seq;
-								send(confd, &ack, sizeof(ack), 0);
-							} 
+							ack = recievedPacket.seq;
+							send(confd, &ack, sizeof(ack), 0);
 						}
 					}
 					if ( setsockopt(confd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ) {
 						perror("Receiver Timed Out\n");
 						break;
 					} 
-				} while ( next_seq_num < framesToReceive );		
+				} while ( next_seq_num < framesToReceive );					
+				while ( !senderFinished ) {
+					if ((b = recv(confd, data, packetSize, MSG_WAITALL)) > 0) {		
+						PACKET recievedPacket;
+						deserialize(data, &recievedPacket);
+						if ( recievedPacket.finalPacket ) {
+							senderFinished = true; 
+							//cout << "senderDone Received\n";
+						}
+						ack = recievedPacket.seq;
+						send(confd, &ack, sizeof(ack), 0);
+					}
+				}
 				if ( next_seq_num == framesToReceive ) {
 					transferFinished = true;
 					lastPacketSeq = ( framesToReceive % sRangeHigh ) - 1;
@@ -1553,7 +1561,7 @@ void serialize(PACKET* msgPacket, char *data) {
 	// Chars
     char *p = (char*)b;
     int i = 0;
-    while (i < packetSize)
+    while (i < msgPacket->buffSize)
     {
         *p = msgPacket->buffer[i];
         p++;
