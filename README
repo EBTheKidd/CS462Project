@@ -1,0 +1,48 @@
+CS 462 Sliding Window Protocol Project
+By Kong (VANGKM8545@uwec.edu) and Ethan (BLANKED4046@uwec.edu)
+
+Compile Instructions:
+	1. Place swp.cpp and makefile in the same location
+	2. run the command "make" 
+	3. A file called swp will be generated
+
+Usage Instructions:
+	Server/Client specification is determined by launch paramaters (-s for server and -c for client) with the optional '-d' to run in debug (will produce more output that can be used to track problems)
+
+	Server:
+		1. Enter Server's host IP when prompted
+		2. Enter Server's desired port when prompted
+		3. Enter output file when prompted
+		4. Enter situational errors (if needed) when prompted (specific instructions are provided for each type of error if errors are being used)
+		5. Wait for client connection
+	Client:
+		1. Enter Server's host IP when prompted
+		2. Enter Server's desired port when prompted
+		3. Enter input file when prompted
+		4. Enter packet size when prompted
+		5. Enter protocol when prompted (1=Stop And Wait, 2=Go-Back-N, 3=Selective Repeat)
+		6. Enter timeout (in ms) when prompted
+		7. Enter situational errors (if needed) when prompted (specific instructions are provided for each type of error if errors are being used)
+		8. Client will connect to the server, send the required settings, and begin the transfer
+		
+	After a transfer has completed:
+		Server:
+			1. Output the last packet sequence, number of original packets recieved, and number of retransmitted packets recieved. 
+			2. md5sum will be generated and outputted for the output file
+		Client:
+			1. Output # of original packets sent, # of retransmitted packets sent, total transfer time (in ms), total throughput (in mbps), and effective throughput (in mbps)
+			2. md5sum will be generated and outputted for the input file
+
+Contributions
+	Protocols:
+		1. Stop and Wait
+			- Ethan was in charge of development, Kong also had lots of input that helped progress development
+		2. Go-Back-N
+			- Kong was in charge of development, Ethan also had lots of input that helped progress development
+		3. Selective Repeat
+			- Ethan was in charge of development, Kong also had lots of input that helped progress development
+	Helper Functions
+		All helper functions were a combination of input from both Kobg and Ethan
+		Outside Help:
+			1. CRC - main function seen here: https://stackoverflow.com/a/23726131, were modified to fit out projects needs
+			2. Serialize/Deserialize - main functions seen here: https://stackoverflow.com/a/20838004, were modified to fir out projects needs
