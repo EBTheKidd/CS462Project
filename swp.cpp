@@ -378,12 +378,13 @@ int client(bool debug) {
 	// Stop and wait
 	if (pMode == 1){
 		while (run) {
+			// Declare packet to be resent (in case of dropped ack, damaged packet, or dropped packet)
 			PACKET packetToResend;
 			// memset sendbuffer to make sure its empty (might not be needed)
 			memset(sendbuffer, 0, fileReadSize);
 			// read/send file by desired packet size
 			if (((b = fread(sendbuffer, 1, fileReadSize, fp)) > 0)) {
-				
+				// For each packet, only copy payload elements that are up to the size of the buffer
 				char readBufferTrim[b];
 				for (int t = 0; t < b; t++){
 					readBufferTrim[t] = sendbuffer[t];
