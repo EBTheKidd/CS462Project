@@ -409,7 +409,7 @@ int client(bool debug) {
 				}
 				
 				// Print Output
-				cout << "Sent Packet #" << packetNum << " (" << sendBytes << " bytes)\n";
+				cout << "Sent Packet " << (packetNum % 2 )<< " (" << sendBytes << " bytes)\n";
 				if (debug){
 					newMsg->print();
 				}
@@ -481,7 +481,7 @@ int client(bool debug) {
 					
 					// Check to see if timeout has been reached
 					if (timeout < ms && transferFinished == false){
-						cout << "  |-" << FORERED << "ACK timed out for packet "<< packetNum << " (TTL: " << packetToResend.ttl << ")" << RESETTEXT << ", resending...";
+						cout << "  |-" << FORERED << "ACK timed out for packet "<< (packetNum % 2) << " (TTL: " << packetToResend.ttl << ")" << RESETTEXT << ", resending...";
 						packetToResend.ttl--;
 						
 						// If packet's TTL is not 0, resend the packet.
@@ -747,7 +747,7 @@ int client(bool debug) {
 						//cout << "Packet " << frames[f].packet.seq << " still needs an ack! (" << timepassed << " ms)\n";
 						// if life time of packet is greater than timeout, resend packet
 						if (timepassed > timeout){
-							cout << FORERED << "Packet " << frames[f].packet.seq << " timed out after " << timepassed << " ms...\n" << RESETTEXT;
+							cout << FORERED << "Packet " << (frames[f].packet.seq % sRangeHigh) << " timed out after " << timepassed << " ms...\n" << RESETTEXT;
 							frames[f].packet.ttl = frames[f].packet.ttl - 1;
 							frames[f].resending = true;
 							shouldSendPacket = true;
@@ -788,11 +788,11 @@ int client(bool debug) {
 							// Determine if original or retransmitted packet
 							totalBytesSent += frames[f].size;
 							if ( frames[f].resending == true ) {
-								cout << "Sent Packet #" << frames[f].packet.seq << " (" << sizeof(data) << " bytes) (again)\n";
+								cout << "Sent Packet " << (frames[f].packet.seq % sRangeHigh) << " (" << sizeof(data) << " bytes) (again)\n";
 								retransmittedPacketsSent++;
 								frames[f].resending = false;
 							} else {
-								cout << "Sent Packet #" << frames[f].packet.seq << " (" << sizeof(data) << " bytes)\n";
+								cout << "Sent Packet " << (frames[f].packet.seq % sRangeHigh) << " (" << sizeof(data) << " bytes)\n";
 								originalPacketsSent++;
 							}
 							
@@ -805,23 +805,23 @@ int client(bool debug) {
 								auto random_integer2 = uni(rng);
 								damagePacket = sRandomProb > (int)random_integer2;
 								if ( dropPacket) {
-									cout << "  |-" << FORERED << "PACKET " << frames[f].packet.seq << " RANDOMLY DROPPED\n" << RESETTEXT;
+									cout << "  |-" << FORERED << "PACKET " << (frames[f].packet.seq % sRangeHigh) << " RANDOMLY DROPPED\n" << RESETTEXT;
 									//frames[f].resending = true;
 								} else if ( damagePacket ) {
 									currentPacket.checksum += 1;
-									cout << "  |-" << FORERED << "PACKET " << frames[f].packet.seq << " RANDOMLY DAMAGED\n" << RESETTEXT;
+									cout << "  |-" << FORERED << "PACKET " << (frames[f].packet.seq % sRangeHigh) << " RANDOMLY DAMAGED\n" << RESETTEXT;
 									//frames[f].resending = true;
 								}
 							} else if (sErrors == 3 && frames[f].packet.seq != 0 && frames[f].packet.seq != (framesToSend - 1)){
 								if (find(droppedPackets.begin(), droppedPackets.end(), frames[f].packet.seq) != droppedPackets.end()){
 									dropPacket = true;
-									cout << "  |-" << FORERED << "PACKET " << frames[f].packet.seq << " INTENTIONALLY DROPPED\n" << RESETTEXT;
+									cout << "  |-" << FORERED << "PACKET " << (frames[f].packet.seq % sRangeHigh) << " INTENTIONALLY DROPPED\n" << RESETTEXT;
 									droppedPackets.erase(remove(droppedPackets.begin(), droppedPackets.end(), frames[f].packet.seq), droppedPackets.end());
 									//frames[f].resending = true;
 								} 
 								if (find(damagedPackets.begin(), damagedPackets.end(), frames[f].packet.seq) != damagedPackets.end()){
 									currentPacket.checksum += 1;
-									cout << "  |-" << FORERED << "PACKET " << frames[f].packet.seq << " INTENTIONALLY DAMAGED\n" << RESETTEXT;
+									cout << "  |-" << FORERED << "PACKET " << (frames[f].packet.seq % sRangeHigh) << " INTENTIONALLY DAMAGED\n" << RESETTEXT;
 									damagedPackets.erase(remove(damagedPackets.begin(), damagedPackets.end(), frames[f].packet.seq), damagedPackets.end());
 									//frames[f].resending = true;
 								} 
@@ -1155,7 +1155,7 @@ int server(bool debug) {
 							ack = recievedPacket->seq;
 							
 							// Print recieved packet's output
-							cout << "Recieved Packet #" << recievedPacket->seq;
+							cout << "Recieved Packet " << (recievedPacket->seq % 2);
 							if (resentPacket){
 								cout << " (again) (" << writeBytes + sizeof(PACKET) << " bytes)\n";
 							} else {
@@ -1372,10 +1372,10 @@ int server(bool debug) {
 							
 							// Determine if packet has been sent already
 							if (recievedPacket.ttl < 255){
-								cout << "Recieved Packet #" << frameIndex << " (" << b << " bytes) (again)\n";
+								cout << "Recieved Packet " << (frameIndex % sRangeHigh) << " (" << b << " bytes) (again)\n";
 								retransmittedPacketsRecieved++;
 							} else {
-								cout << "Recieved Packet #" << frameIndex << " (" << b << " bytes)\n";
+								cout << "Recieved Packet " << (frameIndex % sRangeHigh) << " (" << b << " bytes)\n";
 								originalPacketsRecieved++;
 							}
 							
@@ -1398,7 +1398,7 @@ int server(bool debug) {
 								lastPacketSeq = frameIndex;
 								recievePackets = false;
 							} else if (frameIndex == windowHigh){
-								cout << "High frame in window recieved\n";
+								//cout << "High frame in window recieved\n";
 								recievePackets = false;
 							}
 							
@@ -1459,7 +1459,7 @@ int server(bool debug) {
 								// Print current window
 								printWindow(windowLow, sWindowSize, framesToReceive);
 								// Write packet payload/buffer to file
-								cout << "  |-Writing packet " << i << " to file\n";
+								cout << "  |-Writing packet #" << i << " to file\n";
 								fwrite(frames[i].packet.buffer, 1, frames[i].packet.buffSize, fp);
 								// If this is the last packet, finish the transmission
 								if (i == lastPacketSeq){
