@@ -7,7 +7,7 @@ Compile Instructions:
 	3. A file called swp will be generated
 
 Usage Instructions:
-	Server/Client specification is determined by launch paramaters (-s for server and -c for client) with the optional '-d' to run in debug (will produce more output that can be used to track problems)
+	Server/Client specification is determined by launch parameters (-s for server and -c for client) with the optional '-d' to run in debug (will produce more output that can be used to track problems)
 
 	Server:
 		1. Enter Server's host IP when prompted
@@ -22,12 +22,12 @@ Usage Instructions:
 		4. Enter packet size when prompted
 		5. Enter protocol when prompted (1=Stop And Wait, 2=Go-Back-N, 3=Selective Repeat)
 		6. Enter timeout (in ms) when prompted
-		7. Enter situational errors (if needed) when prompted (specific instructions are provided for each type of error if errors are being used)
+		7. Enter situational errors (if needed) when prompted (specific instructions are provided for each type of error if errors are being used) (for GBN, a sequence low of 0 should be used)
 		8. Client will connect to the server, send the required settings, and begin the transfer
 		
 	After a transfer has completed:
 		Server:
-			1. Output the last packet sequence, number of original packets recieved, and number of retransmitted packets recieved. 
+			1. Output the last packet sequence, number of original packets received, and number of retransmitted packets received. 
 			2. md5sum will be generated and outputted for the output file
 		Client:
 			1. Output # of original packets sent, # of retransmitted packets sent, total transfer time (in ms), total throughput (in mbps), and effective throughput (in mbps)
@@ -42,7 +42,66 @@ Contributions
 		3. Selective Repeat
 			- Ethan was in charge of development, Kong also had lots of input that helped progress development
 	Helper Functions
-		All helper functions were a combination of input from both Kobg and Ethan
+		All helper functions were a combination of input from both Kong and Ethan
 		Outside Help:
 			1. CRC - main function seen here: https://stackoverflow.com/a/23726131, were modified to fit out projects needs
-			2. Serialize/Deserialize - main functions seen here: https://stackoverflow.com/a/20838004, were modified to fir out projects needs
+			2. Serialize/Deserialize - main functions seen here: https://stackoverflow.com/a/20838004, were modified to fit out projects needs
+			
+Testing:
+	Stop and Wait:
+		1. ~1.2mb test file
+			a. No Errors, 64000 byte packet size, 1000 ms timeout
+				- Success, 1095 ms transfer time
+			b. 20% Random Errors, 64000 byte packet size, 1000 ms timeout
+				- Success, 8075 ms transfer time
+			c. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout
+				- Success, 7072 ms transfer time
+		2. 1G test file
+			a. No Errors, 64000 byte packet size, 100 ms timeout
+				- Success, 46370 ms transfer time
+			b. 5% Random Errors, 64000 byte packet size, 100 ms timeout
+				- Success, 303244 ms transfer time
+			c. 15 Custom Errors (each), 64000 byte packet size, 100 ms timeout
+				- Success, 49344 ms transfer time
+	Go-Back-N:
+		1. ~1.2mb test file
+			a. No Errors, 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 2901 ms transfer time
+			b. 5% Random Errors, 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 3220 ms transfer time
+			c. 3 Custom Errors (each), 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 3209 ms transfer time
+		2. 1G test file
+			a. No Errors, 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 24532 ms transfer time
+			b. 1% Random Errors, 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 80564 ms transfer time
+			c. 5-10 Custom Errors (each), 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 38547 ms transfer time
+			d. No Errors, 64000 byte packet size, 1000 ms timeout, window size of 256
+				- Success, 26030 ms transfer time
+			e. 1% Random Errors, 64000 byte packet size, 1000 ms timeout, window size of 256
+				- Random ACKS are received after a while, transfer never finishes
+			f. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout, window size of 256
+				- Success, 31015 ms transfer time
+	Selective Repeat:
+		1. ~1.2mb test file
+			a. No Errors, 64000 byte packet size, 1000 ms timeout, window size of 5
+				- Success, 10217 ms transfer time
+			b. 5% Random Errors, 64000 byte packet size, 500 ms timeout, window size of 5
+				- Success, 16609 ms transfer time
+			c. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout, window size of 5
+				- Success, 11454 ms transfer time
+		2. 1G test file
+			a. No Errors, 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 33360 ms transfer time
+			b. 1% Random Errors, 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 179558 ms transfer time
+			c. 5-10 Custom Errors (each), 64000 byte packet size, 100 ms timeout, window size of 5
+				- Success, 75139 ms transfer time
+			d. No Errors, 64000 byte packet size, 500 ms timeout, window size of 256
+				- Success, transfer finishes for server with correct md5sum but client just stops
+			e. 1% Random Errors, 64000 byte packet size, 500 ms timeout, window size of 256
+				- Process gets 'Killed' after a while, transfer never finishes
+			f. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout, window size of 512
+				- Success, transfer finishes for server with correct md5sum but client just stops
