@@ -2,6 +2,9 @@
 
 <img src="https://img.shields.io/badge/platform-linux-success.svg"> <img src="https://img.shields.io/badge/version-0.6.1-green">
 
+Linux sliding window protocol simulation program developed in c++
+Featured Protocols: Stop and Wait, Go-Back-N, and Selective Repeat
+
 ## Testing:
 	Stop and Wait:
 		1. ~1.2mb test file
@@ -60,3 +63,6 @@
 				- Process gets 'Killed' after a while, transfer never finishes
 			f. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout, window size of 512
 				- Success, transfer finishes for server with correct md5sum but client just stops
+
+## Know Bugs (will probably not be fixed)
+  - Window Sequence Display is not correct sometimes, this is likely caused by a missing modulo in the display function
