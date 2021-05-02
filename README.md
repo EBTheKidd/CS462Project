@@ -64,5 +64,5 @@ Featured Protocols: Stop and Wait, Go-Back-N, and Selective Repeat
 			f. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout, window size of 512
 				- Success, transfer finishes for server with correct md5sum but client just stops
 
-## Know Bugs (will probably not be fixed)
+## Known Bugs (will probably not be fixed)
   - Window Sequence Display is not correct sometimes, this is likely caused by a missing modulo in the display function
