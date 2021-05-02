@@ -1,6 +1,6 @@
 # CS 462 - Sliding Window Protocols Team Project By Ethan and Kong
 
-<img src="https://img.shields.io/badge/platform-linux-success.svg"> <img src="https://img.shields.io/badge/version-0.6.1-green">
+<img src="https://img.shields.io/badge/platform-linux-success.svg"> <img src="https://img.shields.io/badge/version-1.0.2-green">
 
 Linux sliding window protocol simulation program developed in c++
 Featured Protocols: Stop and Wait, Go-Back-N, and Selective Repeat
