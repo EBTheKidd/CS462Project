@@ -36,19 +36,19 @@
 
 ## Testing:
 	Stop and Wait:
-		- 1. ~1.2mb test file
-			- a. No Errors, 64000 byte packet size, 1000 ms timeout
+		1. ~1.2mb test file
+			a. No Errors, 64000 byte packet size, 1000 ms timeout
 				- Success, 1095 ms transfer time
-			- b. 20% Random Errors, 64000 byte packet size, 1000 ms timeout
+			b. 20% Random Errors, 64000 byte packet size, 1000 ms timeout
 				- Success, 8075 ms transfer time
-			- c. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout
+			c. 3 Custom Errors (each), 64000 byte packet size, 1000 ms timeout
 				- Success, 7072 ms transfer time
-		- 2. 1G test file
-			- a. No Errors, 64000 byte packet size, 100 ms timeout
+		2. 1G test file
+			a. No Errors, 64000 byte packet size, 100 ms timeout
 				- Success, 46370 ms transfer time
-			- b. 5% Random Errors, 64000 byte packet size, 100 ms timeout
+			b. 5% Random Errors, 64000 byte packet size, 100 ms timeout
 				- Success, 303244 ms transfer time
-			- c. 15 Custom Errors (each), 64000 byte packet size, 100 ms timeout
+			c. 15 Custom Errors (each), 64000 byte packet size, 100 ms timeout
 				- Success, 49344 ms transfer time
 	- ## Go-Back-N:
 		- 1. ~1.2mb test file
