@@ -35,7 +35,7 @@
     - ~1-3 minute transfer time
 
 ## Testing:
-	- ## Stop and Wait:
+	Stop and Wait:
 		- 1. ~1.2mb test file
 			- a. No Errors, 64000 byte packet size, 1000 ms timeout
 				- Success, 1095 ms transfer time
